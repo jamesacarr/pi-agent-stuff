@@ -7,6 +7,7 @@
     "url": "https://github.com/jamesacarr/pi-agent-stuff.git"
   },
   "readme": "README.md",
+  "packageManager": "pnpm@10.32.1",
   "type": "module",
   "keywords": [
     "pi-package",
