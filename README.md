@@ -28,6 +28,7 @@ Or clone locally and point to it:
 | [author-skill](skills/author-skill/) | Creates, edits, audits, and upgrades Agent Skills |
 | [debug-code](skills/debug-code/) | Systematic root-cause investigation for bugs and failures |
 | [frontend-design](skills/frontend-design/) | Influences frontend output towards distinctive, production-grade design |
+| [gh](skills/gh/) | Manages GitHub PRs, issues, and CI runs using the gh CLI |
 | [glab](skills/glab/) | Manages GitLab merge requests using the glab CLI |
 | [jira](skills/jira/) | Manages Jira issues, epics, sprints, and boards using jira-cli |
 | [test](skills/test/) | Enforces test quality — behavioural assertions, minimal mocking, descriptive naming |
