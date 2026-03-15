@@ -143,6 +143,11 @@ type BlockResult = {
   reason?: string;
 };
 
+type AuditLogger = (tool: string, reason: string) => void;
+
+const BLOCK_SUFFIX =
+  '\n\nDO NOT attempt to work around this restriction. DO NOT retry with alternative commands, paths, or approaches that achieve the same result. Report this block to the user exactly as stated and ask how they would like to proceed.';
+
 const findProtectedPath = (
   filePath: string,
   filter: (p: ProtectedPath) => boolean,
@@ -160,12 +165,27 @@ const block = (
     ctx.ui.notify(notification, 'warning');
   }
 
-  return { block: true, reason };
+  return { block: true, reason: reason + BLOCK_SUFFIX };
 };
 
 // ---------------------------------------------------------------------------
 // Per-tool guards
 // ---------------------------------------------------------------------------
+
+const guardSearch = (
+  filePath: string,
+  ctx: ExtensionContext,
+): BlockResult | undefined => {
+  const hit = findProtectedPath(filePath, p => p.blockReads === true);
+
+  if (hit) {
+    return block(
+      ctx,
+      `Search over protected path: ${hit.desc}`,
+      `🛡️ Blocked search over ${hit.desc}: ${filePath}`,
+    );
+  }
+};
 
 const guardBash = async (
   command: string,
@@ -278,8 +298,29 @@ const guardToolCall = (
   if (isToolCallEventType('write', event)) {
     return guardWrite(event.input.path, ctx);
   }
+  if (isToolCallEventType('grep', event)) {
+    return guardSearch(event.input.path ?? '.', ctx);
+  }
+  if (isToolCallEventType('find', event)) {
+    return guardSearch(event.input.path ?? '.', ctx);
+  }
+  if (isToolCallEventType('ls', event)) {
+    return guardSearch(event.input.path ?? '.', ctx);
+  }
 };
 
 export default (pi: ExtensionAPI) => {
-  pi.on('tool_call', (event, ctx) => guardToolCall(event, ctx));
+  const log: AuditLogger = (tool, reason) => {
+    pi.appendEntry('access-control-log', { reason, tool });
+  };
+
+  pi.on('tool_call', async (event, ctx) => {
+    const result = await guardToolCall(event, ctx);
+
+    if (result?.block) {
+      log(event.toolName, result.reason ?? 'unknown');
+    }
+
+    return result;
+  });
 };

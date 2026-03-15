@@ -36,6 +36,18 @@ const writeEvent = (path: string): ToolCallEvent =>
 const editEvent = (path: string): ToolCallEvent =>
   ({ input: { path }, toolName: 'edit' }) as unknown as ToolCallEvent;
 
+const grepEvent = (path: string): ToolCallEvent =>
+  ({
+    input: { path, pattern: 'test' },
+    toolName: 'grep',
+  }) as unknown as ToolCallEvent;
+
+const findEvent = (path: string): ToolCallEvent =>
+  ({ input: { path }, toolName: 'find' }) as unknown as ToolCallEvent;
+
+const lsEvent = (path: string): ToolCallEvent =>
+  ({ input: { path }, toolName: 'ls' }) as unknown as ToolCallEvent;
+
 // Capture the tool_call handler from the extension -----------------------
 
 type Handler = (
@@ -45,7 +57,12 @@ type Handler = (
 
 let handler: Handler;
 
+const auditLog: Array<{ tool: string; reason: string }> = [];
+
 const fakePi = {
+  appendEntry: (_type: string, data: { tool: string; reason: string }) => {
+    auditLog.push(data);
+  },
   on: (eventName: string, h: Handler) => {
     if (eventName === 'tool_call') {
       handler = h;
@@ -279,6 +296,74 @@ describe('access-control', () => {
     )('blocks write to `%s` when user declines', async path => {
       const result = await handler(writeEvent(path), stubCtx(true, false));
       expect(result?.block).toBe(true);
+    });
+  });
+
+  describe('search tool protection', () => {
+    const blockedSearchPaths = [
+      ['.env', 'environment file'],
+      ['.env.local', 'environment file'],
+      ['.dev.vars', 'dev vars file'],
+      ['~/.ssh/', '.ssh directory'],
+      ['secrets.json', 'secrets file'],
+      ['credentials', 'credentials file'],
+    ];
+
+    it.each(
+      blockedSearchPaths,
+    )('blocks grep over `%s` (%s)', async (path, desc) => {
+      const result = await handler(grepEvent(path), stubCtx(false));
+      expect(result).toBeDefined();
+      expect(result?.block).toBe(true);
+      expect(result?.reason).toContain(desc);
+    });
+
+    it.each(
+      blockedSearchPaths,
+    )('blocks find over `%s` (%s)', async (path, desc) => {
+      const result = await handler(findEvent(path), stubCtx(false));
+      expect(result).toBeDefined();
+      expect(result?.block).toBe(true);
+      expect(result?.reason).toContain(desc);
+    });
+
+    it.each(
+      blockedSearchPaths,
+    )('blocks ls over `%s` (%s)', async (path, desc) => {
+      const result = await handler(lsEvent(path), stubCtx(false));
+      expect(result).toBeDefined();
+      expect(result?.block).toBe(true);
+      expect(result?.reason).toContain(desc);
+    });
+
+    const allowedSearchPaths = ['src/', '.', 'lib/utils', '.env.example'];
+
+    it.each(allowedSearchPaths)('allows grep over `%s`', async path => {
+      const result = await handler(grepEvent(path), stubCtx(false));
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('block messages', () => {
+    it('includes anti-workaround language in block reasons', async () => {
+      const result = await handler(readEvent('.env'), stubCtx(false));
+      expect(result?.reason).toContain('DO NOT attempt to work around');
+    });
+  });
+
+  describe('audit logging', () => {
+    it('logs blocked tool calls', async () => {
+      auditLog.length = 0;
+      await handler(readEvent('.env'), stubCtx(false));
+      expect(auditLog).toHaveLength(1);
+      expect(auditLog[0].tool).toBe('read');
+      expect(auditLog[0].reason).toContain('environment file');
+    });
+
+    it('does not log allowed tool calls', async () => {
+      auditLog.length = 0;
+      await handler(readEvent('README.md'), stubCtx(false));
+      expect(auditLog).toHaveLength(0);
     });
   });
 });
