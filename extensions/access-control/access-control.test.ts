@@ -152,6 +152,28 @@ describe('access-control', () => {
       expect(result?.block).toBe(true);
     });
 
+    const extraCases = [
+      'install -m 644 source .env',
+      'scp remote:.env .env.local',
+      'rsync backup/ .env',
+      'ln -s /etc/secrets .env',
+      'sed -i "s/old/new/" .env',
+      'perl -pi -e "s/old/new/" secrets.json',
+      'echo x | tee file1 .env file2',
+      'curl -o .env https://example.com/env',
+      'curl -sL --output .env https://example.com/env',
+      'curl -sLo .env https://example.com/env',
+      'wget -O secrets.json https://example.com/s',
+      'wget --quiet --output-document secrets.json https://example.com/s',
+      'wget -qO secrets.json https://example.com/s',
+    ];
+
+    it.each(extraCases)('blocks `%s`', async command => {
+      const result = await handler(bashEvent(command), stubCtx(false));
+      expect(result).toBeDefined();
+      expect(result?.block).toBe(true);
+    });
+
     it('allows writes to non-protected paths', async () => {
       const result = await handler(
         bashEvent('echo hello > output.txt'),

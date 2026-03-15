@@ -92,19 +92,40 @@ const SOFT_PROTECTED_PATHS = [
 // ---------------------------------------------------------------------------
 
 const extractBashWriteTargets = (command: string): string[] => {
-  const patterns = [
+  // Patterns that capture a single target in group 1
+  const singleTargetPatterns = [
     />\s*(\S+)/g,
-    /\btee\s+(?:-\S+\s+)*(\S+)/g,
     /\bcp\s+(?:-\S+\s+)*\S+\s+(\S+)/g,
     /\bmv\s+(?:-\S+\s+)*\S+\s+(\S+)/g,
+    /\binstall\s+.*\s(\S+)\s*$/g,
+    /\bln\s+(?:-\S+\s+)*\S+\s+(\S+)/g,
+    /\bscp\s+(?:-\S+\s+)*\S+\s+(\S+)/g,
+    /\brsync\s+(?:-\S+\s+)*\S+\s+(\S+)/g,
+    /\bsed\s+(?:-\S+\s+)*(?:"[^"]*"|'[^']*'|\S+)\s+(\S+)/g,
+    /\bperl\s+(?:-\S+\s+)*(?:"[^"]*"|'[^']*'|\S+)\s+(\S+)/g,
+    /\bcurl\s+(?:-\S+\s+)*(?:-[A-Za-z]*o|--output)\s+(\S+)/g,
+    /\bwget\s+(?:-\S+\s+)*(?:-[A-Za-z]*O|--output-document)\s+(\S+)/g,
   ];
+
+  // tee captures all trailing non-option arguments
+  const teePattern = /\btee\s+(.*)/;
 
   const targets: string[] = [];
 
-  for (const pattern of patterns) {
+  for (const pattern of singleTargetPatterns) {
     for (const match of command.matchAll(pattern)) {
       if (match[1]) {
         targets.push(match[1]);
+      }
+    }
+  }
+
+  const teeMatch = command.match(teePattern);
+  if (teeMatch) {
+    const args = teeMatch[1].split(/\s+/).filter(Boolean);
+    for (const arg of args) {
+      if (!arg.startsWith('-')) {
+        targets.push(arg);
       }
     }
   }
