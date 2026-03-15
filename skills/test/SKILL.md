@@ -72,6 +72,10 @@ Assert on observable outcomes. Never on internals.
 | `expect(setTimeout).toHaveBeenCalledWith(_, 100)` | Test that the function doesn't resolve before the delay elapses | Don't spy on framework internals |
 | `expect(internalState.retryCount)` | `expect(result).toBe('success')` | Test outputs, not how the code works |
 
+Assert exact strings, ordering, or formatting only when downstream code parses or depends on the exact bytes. Otherwise use `toContain`, `toMatch`, structural checks, or parsed values.
+
+Don't runtime-test compile-time guarantees. If TypeScript enforces it, use type-test coverage (`expectTypeOf`, `// @ts-expect-error`) — not `expect(typeof x).toBe('string')`.
+
 ## Edge Cases
 
 Cover what's relevant — not everything, but don't skip the obvious:
