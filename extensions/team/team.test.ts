@@ -36,16 +36,56 @@ vi.mock('../subagent/agents.ts', () => ({
   })),
 }));
 
-// Mock process module to avoid spawning real processes
-vi.mock('./process.ts', () => ({
-  cleanSessionDir: vi.fn(),
-  makeSessionDir: vi.fn(() => '/tmp/test-team-sessions'),
-  runAgent: vi.fn(),
+// Mock RPC module to avoid spawning real processes
+vi.mock('./rpc.ts', () => {
+  const connections = new Map<
+    string,
+    {
+      send: ReturnType<typeof vi.fn>;
+      onEvent: ReturnType<typeof vi.fn>;
+      detach: ReturnType<typeof vi.fn>;
+    }
+  >();
+
+  return {
+    cleanSessionDir: vi.fn(),
+    getRpcConnection: vi.fn((member: { name: string }) =>
+      connections.get(member.name),
+    ),
+    killRpcProcess: vi.fn(),
+    makeSessionDir: vi.fn(() => '/tmp/test-team-sessions'),
+    pushActivity: vi.fn(),
+    removeRpcConnection: vi.fn(),
+    setupRpcConnection: vi.fn((member: { name: string }) => {
+      const conn = {
+        detach: vi.fn(),
+        onEvent: vi.fn().mockReturnValue(() => {}),
+        send: vi.fn().mockResolvedValue({ success: true }),
+      };
+      connections.set(member.name, conn);
+      return conn;
+    }),
+    spawnRpcProcess: vi.fn((_cwd: string, member: { rpcProcess?: unknown }) => {
+      const proc = {
+        killed: false,
+        on: vi.fn(),
+        pid: 12345,
+      };
+      member.rpcProcess = proc;
+      return proc;
+    }),
+  };
+});
+
+// Mock team-file module
+vi.mock('./team-file.ts', () => ({
+  addChild: vi.fn(),
+  cleanupOrphans: vi.fn(),
+  removeChild: vi.fn(),
+  removeTeamFile: vi.fn(),
 }));
 
-import { emptyUsage } from './format.ts';
-import { runAgent } from './process.ts';
-import type { SendResult } from './types.ts';
+import { getRpcConnection, spawnRpcProcess } from './rpc.ts';
 
 // ---------------------------------------------------------------------------
 // Capture tool handlers
@@ -63,25 +103,39 @@ const tools = new Map<string, ToolDef>();
 const eventHandlers = new Map<string, (...args: unknown[]) => void>();
 
 const fakePi = {
+  events: { emit: vi.fn(), on: vi.fn() },
+  getFlag: vi.fn().mockReturnValue(false), // Not a team member
   on: (event: string, handler: (...args: unknown[]) => void) => {
     eventHandlers.set(event, handler);
   },
+  registerCommand: vi.fn(),
+  registerFlag: vi.fn(),
+  registerShortcut: vi.fn(),
   registerTool: (tool: ToolDef) => {
     tools.set(tool.name, tool);
   },
+  sendMessage: vi.fn(),
 };
 
 const stubCtx = (): ExtensionContext =>
   ({
     cwd: '/test/project',
     hasUI: false,
-    ui: { notify: () => {} },
+    ui: {
+      notify: () => {},
+      select: vi.fn(),
+      setWidget: vi.fn(),
+    },
   }) as unknown as ExtensionContext;
 
 // Load extension
 const mod = await import('./team.ts');
 mod.default(fakePi as unknown as ExtensionAPI);
 
+// Capture registration state before beforeEach clears mocks
+const registeredFlag = fakePi.registerFlag.mock.calls.some(
+  (c: unknown[]) => c[0] === 'team-member',
+);
 const getExecute = (name: string) => {
   const tool = tools.get(name);
   if (!tool) {
@@ -105,11 +159,17 @@ describe('team extension', () => {
   });
 
   describe('tool registration', () => {
-    it('registers all four tools', () => {
+    it('registers all six tools', () => {
       expect(tools.has('team_spawn')).toBe(true);
       expect(tools.has('team_send')).toBe(true);
+      expect(tools.has('team_steer')).toBe(true);
+      expect(tools.has('team_follow_up')).toBe(true);
       expect(tools.has('team_list')).toBe(true);
       expect(tools.has('team_dismiss')).toBe(true);
+    });
+
+    it('registers the --team-member flag', () => {
+      expect(registeredFlag).toBe(true);
     });
 
     it('registers session lifecycle handlers', () => {
@@ -131,6 +191,7 @@ describe('team extension', () => {
       );
       expect(result.content[0].text).toContain('scout');
       expect(result.content[0].text).toContain('spawned');
+      expect(spawnRpcProcess).toHaveBeenCalledOnce();
     });
 
     it('uses custom name when provided', async () => {
@@ -180,28 +241,6 @@ describe('team extension', () => {
     const execSpawn = () => getExecute('team_spawn');
     const execSend = () => getExecute('team_send');
 
-    const successResult: SendResult = {
-      elapsed: 1000,
-      exitCode: 0,
-      messages: [
-        {
-          content: [{ text: 'Found 3 relevant files.', type: 'text' }],
-          role: 'assistant',
-          timestamp: Date.now(),
-        } as unknown as import('@mariozechner/pi-ai').Message,
-      ],
-      stderr: '',
-      usage: { ...emptyUsage(), input: 100, output: 50, turns: 1 },
-    };
-
-    const errorResult: SendResult = {
-      elapsed: 500,
-      exitCode: 1,
-      messages: [],
-      stderr: 'Model not found',
-      usage: emptyUsage(),
-    };
-
     it('throws for unknown member', async () => {
       await expect(
         execSend()(
@@ -214,8 +253,7 @@ describe('team extension', () => {
       ).rejects.toThrow('No team member "nobody"');
     });
 
-    it('sends message and returns response', async () => {
-      vi.mocked(runAgent).mockResolvedValueOnce(successResult);
+    it('sends message and returns immediately', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -231,12 +269,20 @@ describe('team extension', () => {
         undefined,
         stubCtx(),
       );
-      expect(result.content[0].text).toBe('Found 3 relevant files.');
-      expect(runAgent).toHaveBeenCalledOnce();
+      expect(result.content[0].text).toContain('Message sent');
+      expect(result.content[0].text).toContain('scout');
+
+      // Verify RPC prompt was sent
+      const conn = vi.mocked(getRpcConnection).mock.results[0]?.value;
+      if (conn) {
+        expect(conn.send).toHaveBeenCalledWith({
+          message: 'find auth code',
+          type: 'prompt',
+        });
+      }
     });
 
-    it('throws on agent error', async () => {
-      vi.mocked(runAgent).mockResolvedValueOnce(errorResult);
+    it('throws when member is already running', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -245,29 +291,7 @@ describe('team extension', () => {
         stubCtx(),
       );
 
-      await expect(
-        execSend()(
-          'id',
-          { message: 'do something', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow('failed: Model not found');
-    });
-
-    it('accumulates usage across sends', async () => {
-      vi.mocked(runAgent)
-        .mockResolvedValueOnce(successResult)
-        .mockResolvedValueOnce(successResult);
-
-      await execSpawn()(
-        'id',
-        { agent: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
+      // First send starts running
       await execSend()(
         'id',
         { message: 'first', name: 'scout' },
@@ -275,23 +299,32 @@ describe('team extension', () => {
         undefined,
         stubCtx(),
       );
-      const result = await execSend()(
-        'id',
-        { message: 'second', name: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
 
-      const details = result.details as {
-        totalUsage: { input: number; turns: number };
-      };
-      expect(details.totalUsage.input).toBe(200);
-      expect(details.totalUsage.turns).toBe(2);
+      // Second send should fail (member is running)
+      await expect(
+        execSend()(
+          'id',
+          { message: 'second', name: 'scout' },
+          undefined,
+          undefined,
+          stubCtx(),
+        ),
+      ).rejects.toThrow('already processing');
+    });
+  });
+
+  describe('team_steer', () => {
+    const execSpawn = () => getExecute('team_spawn');
+    const execSend = () => getExecute('team_send');
+    const execSteer = () => getExecute('team_steer');
+
+    it('throws for unknown member', async () => {
+      await expect(
+        execSteer()('id', { message: 'stop', name: 'nobody' }),
+      ).rejects.toThrow('No team member "nobody"');
     });
 
-    it('sets member status to error on failure', async () => {
-      vi.mocked(runAgent).mockResolvedValueOnce(errorResult);
+    it('throws when member is not running', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -301,25 +334,11 @@ describe('team extension', () => {
       );
 
       await expect(
-        execSend()(
-          'id',
-          { message: 'fail', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow();
-
-      // List should show error status
-      const listResult = await getExecute('team_list')();
-      expect(listResult.content[0].text).toContain('✗ error');
+        execSteer()('id', { message: 'stop', name: 'scout' }),
+      ).rejects.toThrow('not running');
     });
 
-    it('allows retry after error', async () => {
-      vi.mocked(runAgent)
-        .mockResolvedValueOnce(errorResult)
-        .mockResolvedValueOnce(successResult);
-
+    it('sends steer command when member is running', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -328,26 +347,19 @@ describe('team extension', () => {
         stubCtx(),
       );
 
-      // First send fails
-      await expect(
-        execSend()(
-          'id',
-          { message: 'fail', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow();
-
-      // Retry succeeds
-      const result = await execSend()(
+      await execSend()(
         'id',
-        { message: 'retry', name: 'scout' },
+        { message: 'work', name: 'scout' },
         undefined,
         undefined,
         stubCtx(),
       );
-      expect(result.content[0].text).toBe('Found 3 relevant files.');
+
+      const result = await execSteer()('id', {
+        message: 'change direction',
+        name: 'scout',
+      });
+      expect(result.content[0].text).toContain('Steering');
     });
   });
 
@@ -426,6 +438,139 @@ describe('team extension', () => {
 
       const result = await getExecute('team_list')();
       expect(result.content[0].text).toContain('No team members');
+    });
+  });
+
+  describe('error recovery', () => {
+    const execSpawn = () => getExecute('team_spawn');
+    const execSend = () => getExecute('team_send');
+
+    it('resets member status when RPC send rejects', async () => {
+      await execSpawn()(
+        'id',
+        { agent: 'scout' },
+        undefined,
+        undefined,
+        stubCtx(),
+      );
+
+      // Make the RPC connection reject on send
+      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
+      if (conn) {
+        vi.mocked(conn.send).mockRejectedValueOnce(
+          new Error('connection lost'),
+        );
+      }
+
+      await expect(
+        execSend()(
+          'id',
+          { message: 'fail', name: 'scout' },
+          undefined,
+          undefined,
+          stubCtx(),
+        ),
+      ).rejects.toThrow('connection lost');
+
+      // Member should be in error state, not stuck in 'running'
+      const listResult = await getExecute('team_list')();
+      expect(listResult.content[0].text).toContain('✗ error');
+    });
+
+    it('resets member status when RPC returns success: false', async () => {
+      await execSpawn()(
+        'id',
+        { agent: 'scout' },
+        undefined,
+        undefined,
+        stubCtx(),
+      );
+
+      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
+      if (conn) {
+        vi.mocked(conn.send).mockResolvedValueOnce({
+          error: 'model unavailable',
+          success: false,
+        });
+      }
+
+      await expect(
+        execSend()(
+          'id',
+          { message: 'fail', name: 'scout' },
+          undefined,
+          undefined,
+          stubCtx(),
+        ),
+      ).rejects.toThrow('model unavailable');
+
+      const listResult = await getExecute('team_list')();
+      expect(listResult.content[0].text).toContain('✗ error');
+    });
+
+    it('allows retry after error', async () => {
+      await execSpawn()(
+        'id',
+        { agent: 'scout' },
+        undefined,
+        undefined,
+        stubCtx(),
+      );
+
+      // First send fails
+      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
+      if (conn) {
+        vi.mocked(conn.send)
+          .mockRejectedValueOnce(new Error('timeout'))
+          .mockResolvedValueOnce({ success: true });
+      }
+
+      await expect(
+        execSend()(
+          'id',
+          { message: 'fail', name: 'scout' },
+          undefined,
+          undefined,
+          stubCtx(),
+        ),
+      ).rejects.toThrow();
+
+      // Retry should work (status is 'error', not 'running')
+      const result = await execSend()(
+        'id',
+        { message: 'retry', name: 'scout' },
+        undefined,
+        undefined,
+        stubCtx(),
+      );
+      expect(result.content[0].text).toContain('Message sent');
+    });
+  });
+
+  describe('team_follow_up', () => {
+    const execSpawn = () => getExecute('team_spawn');
+    const execFollowUp = () => getExecute('team_follow_up');
+
+    it('throws for unknown member', async () => {
+      await expect(
+        execFollowUp()('id', { message: 'later', name: 'nobody' }),
+      ).rejects.toThrow('No team member "nobody"');
+    });
+
+    it('sends follow_up command', async () => {
+      await execSpawn()(
+        'id',
+        { agent: 'scout' },
+        undefined,
+        undefined,
+        stubCtx(),
+      );
+
+      const result = await execFollowUp()('id', {
+        message: 'after you finish, summarise',
+        name: 'scout',
+      });
+      expect(result.content[0].text).toContain('Follow-up queued');
     });
   });
 });

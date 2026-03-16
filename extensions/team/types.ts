@@ -1,6 +1,6 @@
-import type { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 
-import type { Message } from '@mariozechner/pi-ai';
+import type { AgentMessage } from '@mariozechner/pi-agent-core';
 
 import type { AgentConfig } from '../subagent/agents.ts';
 
@@ -14,6 +14,30 @@ export interface UsageStats {
   turns: number;
 }
 
+export interface ActivityItem {
+  type:
+    | 'tool_start'
+    | 'tool_end'
+    | 'text_delta'
+    | 'agent_start'
+    | 'agent_end'
+    | 'error';
+  timestamp: number;
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  text?: string;
+  /** Truncated tool output (from tool_execution_end result). */
+  toolOutput?: string;
+  isError?: boolean;
+}
+
+export interface AgentEndResult {
+  messages: AgentMessage[];
+  usage: UsageStats;
+  elapsed: number;
+  error?: string;
+}
+
 export interface TeamMember {
   agent: AgentConfig;
   name: string;
@@ -23,26 +47,23 @@ export interface TeamMember {
   sends: number;
   sessionFile: string;
   status: 'error' | 'idle' | 'running';
-  /** Active child process — set while a send is in flight. */
-  proc?: ReturnType<typeof spawn>;
-}
-
-export interface SendResult {
-  elapsed: number;
-  errorMessage?: string;
-  exitCode: number;
-  messages: Message[];
-  model?: string;
-  stderr: string;
-  stopReason?: string;
-  usage: UsageStats;
+  /** Long-lived RPC child process. */
+  rpcProcess?: ChildProcess;
+  /** Counter for RPC request IDs. */
+  rpcRequestId: number;
+  /** For cancelling in-flight work. */
+  abortController?: AbortController;
+  /** Most recent activity (for collapsed widget view). */
+  lastActivity?: ActivityItem;
+  /** Recent activity items (for expanded widget view, capped at ~50). */
+  activityLog: ActivityItem[];
+  /** Result from last completed agent_end, consumed by sendMessage injection. */
+  pendingResult?: AgentEndResult;
 }
 
 export interface TeamSendDetails {
   agentName: string;
   memberName: string;
-  result: SendResult;
-  totalUsage: UsageStats;
 }
 
 export type DisplayItem =

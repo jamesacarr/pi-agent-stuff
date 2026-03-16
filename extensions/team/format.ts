@@ -1,5 +1,6 @@
 import * as os from 'node:os';
 
+import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { Message } from '@mariozechner/pi-ai';
 import type { ThemeColor } from '@mariozechner/pi-coding-agent';
 
@@ -71,6 +72,14 @@ export const formatUsage = (u: UsageStats, model?: string): string => {
 // ---------------------------------------------------------------------------
 // Message extraction
 // ---------------------------------------------------------------------------
+
+/** Extract final assistant text from AgentMessage[] (filters to Message first). */
+export const getFinalAgentOutput = (messages: AgentMessage[]): string => {
+  const msgs = messages.filter(
+    (m): m is Message => 'role' in m && typeof m.role === 'string',
+  );
+  return getFinalOutput(msgs);
+};
 
 export const getFinalOutput = (messages: Message[]): string => {
   for (let i = messages.length - 1; i >= 0; i--) {
