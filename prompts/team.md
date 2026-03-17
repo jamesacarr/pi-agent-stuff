@@ -9,19 +9,25 @@ $@
 
 Spawn the team: scout, planner, executor, reviewer.
 
-Work through these stages. Each stage requires the previous stage's result before proceeding.
+When sending the initial task to each member, include:
+- The names of all other team members so they can communicate directly using team_send.
+- Their role in the workflow and who to hand off to when done.
 
-1. **Scout** — Send the scout to find all code relevant to the task. Include specific areas to investigate.
-2. **Plan** — Forward the scout's full findings and the task description to the planner.
-3. **Execute** — Forward the full plan to the executor. It will implement step-by-step and verify.
-4. **Review** — Forward the executor's output to the reviewer with the list of changed files. Include focus areas relevant to the changes.
-5. **Fix blocking issues** — If the reviewer finds blocking findings, forward them to the executor. Re-review. Repeat until clean.
-6. **Fix suggestions** — Forward remaining suggestions to the executor. Use judgement — skip purely stylistic findings. No re-review needed.
-7. **Dismiss** all team members and summarise what was done, listing all changed files.
+1. **Scout** — Send the scout the task. Tell it to forward its findings directly to the planner when done.
+2. **Monitor** — Watch progress in the widget. Intervene with team_steer only if a member gets stuck or goes off-track.
+3. **Report** — When the workflow completes, summarise what was done and list all changed files.
+4. **Dismiss** all team members.
+
+## Member instructions template
+
+When sending the initial task to a member, include instructions like:
+
+> You are the [role] on a team with: scout, planner, executor, reviewer.
+> When you finish, forward your full output to [next member] using team_send.
+> [Specific task details]
 
 ## Rules
 
-- Forward results in full between members — each member has an isolated context and needs complete information.
-- Never summarise review findings or plans — the executor follows steps verbatim and needs severity, file:line, evidence, and suggestion.
-- Always list specific changed files when forwarding to the reviewer.
+- The members handle handoffs directly — do not relay results between them.
+- Forward review findings back to the executor for fixes. Tell the reviewer to send blocking findings to the executor directly.
 - Stop and ask the user on failure — silent retries waste tokens and can compound errors.

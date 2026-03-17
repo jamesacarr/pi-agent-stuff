@@ -9,12 +9,13 @@ $@
 
 Spawn a scout and a planner.
 
-1. **Scout** — Send the scout to find all code relevant to the task.
-2. **Plan** — Forward the scout's full findings and the task description to the planner.
-3. **Report** the plan to the user. Do not execute it.
+1. **Scout** — Send the scout the task. Tell it to forward its full findings directly to the planner using team_send when done.
+2. **Monitor** — Watch progress. Intervene only if needed.
+3. **Report** — When the planner finishes, report the plan to the user. Do not execute it.
 4. **Dismiss** all team members.
 
 ## Rules
 
-- Forward scout findings in full to the planner — the planner needs complete code context to produce accurate steps.
-- Do not implement anything — the user wants a plan to review before committing to execution.
+- Tell each member about the other team members so they can communicate directly.
+- Do not relay results between members — they handle handoffs themselves.
+- Do not implement anything — the user wants a plan to review.

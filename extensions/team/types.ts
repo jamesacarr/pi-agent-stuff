@@ -1,6 +1,5 @@
-import type { ChildProcess } from 'node:child_process';
-
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { AgentSession } from '@mariozechner/pi-coding-agent';
 
 import type { AgentConfig } from '../subagent/agents.ts';
 
@@ -45,14 +44,9 @@ export interface TeamMember {
   usage: UsageStats;
   /** Number of team_send calls completed. */
   sends: number;
-  sessionFile: string;
   status: 'error' | 'idle' | 'running';
-  /** Long-lived RPC child process. */
-  rpcProcess?: ChildProcess;
-  /** Counter for RPC request IDs. */
-  rpcRequestId: number;
-  /** For cancelling in-flight work. */
-  abortController?: AbortController;
+  /** In-process agent session for this member. */
+  session?: AgentSession;
   /** Most recent activity (for collapsed widget view). */
   lastActivity?: ActivityItem;
   /** Recent activity items (for expanded widget view, capped at ~50). */

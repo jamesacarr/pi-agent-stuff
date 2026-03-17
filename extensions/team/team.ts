@@ -1,17 +1,17 @@
 /**
- * Team Extension — persistent async subagent orchestration via RPC
+ * Team Extension — persistent async subagent orchestration via SDK sessions
  *
- * Spawns named agents as persistent RPC processes with two-way communication.
+ * Spawns named agents as persistent AgentSession instances with two-way communication.
  * Results are pushed into the main conversation via pi.sendMessage().
  * A live widget shows team member activity (ctrl+shift+t to expand/collapse).
  *
  * Tools:
- *   team_spawn     — create a named agent with a persistent RPC session
+ *   team_spawn     — create a named agent with a persistent session
  *   team_send      — send a message to a team member (response arrives separately)
  *   team_steer     — interrupt a running member with new directions
  *   team_follow_up — queue a message for after the member finishes
  *   team_list      — list all team members and their status
- *   team_dismiss   — remove a team member (aborts if running, kills process)
+ *   team_dismiss   — remove a team member (aborts if running, disposes session)
  */
 
 import * as path from 'node:path';
@@ -31,20 +31,10 @@ import {
   getFinalAgentOutput,
 } from './format.ts';
 import {
-  cleanSessionDir,
-  getRpcConnection,
-  killRpcProcess,
-  makeSessionDir,
+  createMemberSession,
+  destroyMemberSession,
   pushActivity,
-  setupRpcConnection,
-  spawnRpcProcess,
-} from './rpc.ts';
-import {
-  addChild,
-  cleanupOrphans,
-  removeChild,
-  removeTeamFile,
-} from './team-file.ts';
+} from './session.ts';
 import type { TeamMember, UsageStats } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -61,29 +51,9 @@ const PACKAGE_AGENTS_DIR = path.resolve(
 // ---------------------------------------------------------------------------
 
 export default (pi: ExtensionAPI) => {
-  // -- Flag: --team-member (child mode) -----------------------------------
-
-  pi.registerFlag('team-member', {
-    default: false,
-    description: 'Run as a team member (stdin EOF triggers shutdown)',
-    type: 'boolean',
-  });
-
-  if (pi.getFlag('--team-member')) {
-    // Child mode: just monitor stdin for parent death
-    // biome-ignore lint/suspicious/useAwait: pi event handlers must return Promise
-    pi.on('session_start', async (_event, ctx) => {
-      process.stdin.on('end', () => {
-        ctx.shutdown();
-      });
-    });
-    return; // Don't register team tools in child processes
-  }
-
-  // -- Parent mode: full team orchestration --------------------------------
+  // -- Team orchestration ---------------------------------------------------
 
   const members = new Map<string, TeamMember>();
-  let sessionDir = makeSessionDir();
 
   // Saved ctx reference for widget updates from any context
   let widgetCtx:
@@ -345,7 +315,7 @@ export default (pi: ExtensionAPI) => {
     );
   };
 
-  /** Debounced widget update — batches rapid RPC events. */
+  /** Debounced widget update — batches rapid session events. */
   let widgetTimer: ReturnType<typeof setTimeout> | undefined;
   const updateWidget = () => {
     if (widgetTimer) {
@@ -367,12 +337,11 @@ export default (pi: ExtensionAPI) => {
   };
 
   // ---------------------------------------------------------------------------
-  // RPC event handling — wires child events to activity log + result delivery
+  // Session event handling — wires session events to activity log + result delivery
   // ---------------------------------------------------------------------------
 
   const wireEvents = (member: TeamMember) => {
-    const conn = getRpcConnection(member);
-    if (!conn) {
+    if (!member.session) {
       return;
     }
 
@@ -380,33 +349,34 @@ export default (pi: ExtensionAPI) => {
     // Accumulate usage from assistant messages during a run
     let runUsage: UsageStats = emptyUsage();
 
-    conn.onEvent((event: Record<string, unknown>) => {
-      const type = event.type as string;
-
-      if (type === 'agent_start') {
+    member.session.subscribe(event => {
+      if (event.type === 'agent_start') {
         agentStartTime = Date.now();
         runUsage = emptyUsage();
         pushActivity(member, { timestamp: Date.now(), type: 'agent_start' });
         updateWidget();
       }
 
-      if (type === 'tool_execution_start') {
+      if (event.type === 'tool_execution_start') {
         pushActivity(member, {
           timestamp: Date.now(),
-          toolArgs: event.args as Record<string, unknown>,
-          toolName: event.toolName as string,
+          toolArgs: event.args,
+          toolName: event.toolName,
           type: 'tool_start',
         });
         updateWidget();
       }
 
-      if (type === 'tool_execution_end') {
+      if (event.type === 'tool_execution_end') {
         // Extract tool output text from result
         let toolOutput: string | undefined;
-        const result = event.result as Record<string, unknown> | undefined;
+        const result = event.result;
         if (result?.content) {
-          const content = result.content as Record<string, unknown>[];
-          const textParts = content
+          const contentArr = result.content as Array<{
+            type: string;
+            text?: string;
+          }>;
+          const textParts = contentArr
             .filter(c => c.type === 'text' && typeof c.text === 'string')
             .map(c => c.text as string);
           if (textParts.length > 0) {
@@ -420,35 +390,46 @@ export default (pi: ExtensionAPI) => {
         }
 
         pushActivity(member, {
-          isError: event.isError as boolean,
+          isError: event.isError,
           timestamp: Date.now(),
-          toolName: event.toolName as string,
+          toolName: event.toolName,
           toolOutput,
           type: 'tool_end',
         });
         updateWidget();
+
+        // Check for member-to-member routing (child's team_send)
+        if (event.toolName === 'team_send' && result?.details) {
+          if (result.details.routeTo && result.details.routeMessage) {
+            routeMessage(
+              (result.details.routeFrom as string) || member.name,
+              result.details.routeTo as string,
+              result.details.routeMessage as string,
+            );
+          }
+        }
       }
 
-      if (type === 'message_end') {
-        const msg = event.message as Record<string, unknown>;
+      if (event.type === 'message_end') {
+        const msg = event.message;
         if (msg?.role === 'assistant') {
           // Extract usage from assistant message
-          const u = msg.usage as Record<string, unknown> | undefined;
+          const u = msg.usage;
           if (u) {
             const msgUsage: UsageStats = {
-              cacheRead: (u.cacheRead as number) || 0,
-              cacheWrite: (u.cacheWrite as number) || 0,
-              contextTokens: (u.totalTokens as number) || 0,
-              cost: ((u.cost as Record<string, unknown>)?.total as number) || 0,
-              input: (u.input as number) || 0,
-              output: (u.output as number) || 0,
+              cacheRead: u.cacheRead || 0,
+              cacheWrite: u.cacheWrite || 0,
+              contextTokens: u.totalTokens || 0,
+              cost: u.cost?.total || 0,
+              input: u.input || 0,
+              output: u.output || 0,
               turns: 1,
             };
             runUsage = addUsage(runUsage, msgUsage);
           }
 
           // Capture last text output for activity
-          const content = msg.content as Record<string, unknown>[] | undefined;
+          const content = msg.content;
           if (content) {
             for (const part of content) {
               if (part.type === 'text' && typeof part.text === 'string') {
@@ -464,10 +445,9 @@ export default (pi: ExtensionAPI) => {
         }
       }
 
-      if (type === 'agent_end') {
+      if (event.type === 'agent_end') {
         const elapsed = Date.now() - agentStartTime;
-        const messages = (event.messages ??
-          []) as import('@mariozechner/pi-agent-core').AgentMessage[];
+        const messages = event.messages ?? [];
 
         // Check if an error occurred during this run
         const hadError = member.status === 'error';
@@ -516,13 +496,11 @@ export default (pi: ExtensionAPI) => {
       }
 
       // Handle errors during streaming
-      if (type === 'message_update') {
-        const ame = event.assistantMessageEvent as
-          | Record<string, unknown>
-          | undefined;
+      if (event.type === 'message_update') {
+        const ame = event.assistantMessageEvent;
         if (ame?.type === 'error') {
           member.status = 'error';
-          const errorText = (ame.reason as string) || 'unknown error';
+          const errorText = ame.reason || 'unknown error';
           pushActivity(member, {
             text: errorText,
             timestamp: Date.now(),
@@ -535,23 +513,94 @@ export default (pi: ExtensionAPI) => {
   };
 
   // ---------------------------------------------------------------------------
+  // Message routing — shared by orchestrator and member team_send
+  // ---------------------------------------------------------------------------
+
+  const ORCHESTRATOR = '__orchestrator__';
+
+  /**
+   * Route a message from one member (or the orchestrator) to another.
+   * If delivery fails, sends an error back to the sender.
+   */
+  const routeMessage = (from: string, to: string, message: string) => {
+    const target = members.get(to);
+
+    if (!target?.session) {
+      // Delivery failed — send error back to sender
+      const errorMsg = `[Routing error] Failed to deliver message to "${to}": member not found or session not active.`;
+      if (from === ORCHESTRATOR) {
+        pi.sendMessage(
+          { content: errorMsg, customType: 'team-route-error', display: true },
+          { deliverAs: 'followUp', triggerTurn: true },
+        );
+      } else {
+        const sender = members.get(from);
+        if (sender?.session) {
+          sender.session.prompt(errorMsg).catch(() => {
+            // Ignore errors sending error message
+          });
+        }
+      }
+      return;
+    }
+
+    const formatted =
+      from === ORCHESTRATOR ? message : `[From: ${from}]\n\n${message}`;
+
+    target.status = 'running';
+    target.activityLog = [];
+    target.lastActivity = undefined;
+    target.pendingResult = undefined;
+    updateWidgetNow();
+
+    target.session.prompt(formatted).catch(() => {
+      target.status = 'error';
+      updateWidgetNow();
+      const errorMsg = `[Routing error] Failed to deliver message to "${to}": send failed.`;
+      if (from === ORCHESTRATOR) {
+        pi.sendMessage(
+          { content: errorMsg, customType: 'team-route-error', display: true },
+          { deliverAs: 'followUp', triggerTurn: true },
+        );
+      } else {
+        const sender = members.get(from);
+        if (sender?.session) {
+          sender.session.prompt(errorMsg).catch(() => {
+            // Ignore errors sending error message
+          });
+        }
+      }
+    });
+  };
+
+  // Pick up team_send routing from the orchestrator's own tool calls
+  // biome-ignore lint/suspicious/useAwait: pi event handlers must return Promise
+  pi.on('tool_result', async event => {
+    if (event.toolName !== 'team_send') {
+      return;
+    }
+    const details = event.details as Record<string, unknown> | undefined;
+    if (details?.routeTo && details?.routeMessage) {
+      routeMessage(
+        ORCHESTRATOR,
+        details.routeTo as string,
+        details.routeMessage as string,
+      );
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
   // biome-ignore lint/suspicious/useAwait: pi event handlers must return Promise
   pi.on('session_start', async (_event, ctx) => {
-    // Kill any existing members
+    // Dispose any existing member sessions
     for (const [, m] of members) {
-      killRpcProcess(m);
+      destroyMemberSession(m);
     }
     members.clear();
     expandedMembers.clear();
-
-    cleanSessionDir(sessionDir);
-    sessionDir = makeSessionDir();
-
-    // Clean up orphaned team files from crashed sessions
-    cleanupOrphans();
 
     // Capture UI reference for widget management
     widgetCtx = { ui: ctx.ui } as unknown as typeof widgetCtx;
@@ -560,9 +609,8 @@ export default (pi: ExtensionAPI) => {
   // biome-ignore lint/suspicious/useAwait: pi event handlers must return Promise
   pi.on('session_shutdown', async () => {
     for (const [, m] of members) {
-      killRpcProcess(m);
+      destroyMemberSession(m);
     }
-    removeTeamFile();
   });
 
   // -- Toggle all team members expanded/compact --------------------------------
@@ -605,7 +653,6 @@ export default (pi: ExtensionAPI) => {
     description:
       'Create a named team member from an agent definition. Starts a persistent agent process for multi-turn conversations.',
 
-    // biome-ignore lint/suspicious/useAwait: execute must return Promise
     async execute(_callId, params, _signal, _onUpdate, ctx) {
       // Keep uiRef fresh from the latest tool context
       widgetCtx = { ui: ctx.ui } as unknown as typeof widgetCtx;
@@ -631,57 +678,27 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      const sessionFile = path.join(sessionDir, `${name}.jsonl`);
       const member: TeamMember = {
         activityLog: [],
         agent: agentDef,
         name,
-        rpcRequestId: 0,
         sends: 0,
-        sessionFile,
         status: 'idle',
         usage: emptyUsage(),
       };
       members.set(name, member);
 
-      // Spawn the persistent RPC process
-      let proc: ReturnType<typeof spawnRpcProcess>;
+      // Create the persistent session
       try {
-        proc = spawnRpcProcess(ctx.cwd, member, sessionDir);
+        await createMemberSession(ctx.cwd, member);
       } catch (err) {
         members.delete(name);
         throw new Error(
-          `Failed to spawn process for "${name}": ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to create session for "${name}": ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
-      if (!proc.pid) {
-        members.delete(name);
-        throw new Error(
-          `Failed to spawn process for "${name}": no PID assigned`,
-        );
-      }
-
-      const procPid = proc.pid;
-      addChild(procPid);
-
-      // Handle unexpected process death
-      proc.on('exit', code => {
-        if (members.has(name)) {
-          member.status = 'error';
-          member.rpcProcess = undefined;
-          removeChild(procPid);
-          pushActivity(member, {
-            text: `Process exited with code ${code}`,
-            timestamp: Date.now(),
-            type: 'error',
-          });
-          updateWidget();
-        }
-      });
-
-      // Set up the RPC connection and event wiring
-      setupRpcConnection(member);
+      // Wire events for activity tracking and result delivery
       wireEvents(member);
 
       // Update widget to show new member
@@ -738,6 +755,7 @@ export default (pi: ExtensionAPI) => {
     description:
       "Send a message to a team member. The member's response will arrive as a separate message in the conversation when they finish.",
 
+    // biome-ignore lint/suspicious/useAwait: execute must return Promise
     async execute(_callId, params) {
       const member = members.get(params.name);
       if (!member) {
@@ -747,15 +765,10 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      if (!member.rpcProcess || member.rpcProcess.killed) {
+      if (!member.session) {
         throw new Error(
-          `Team member "${params.name}" process is not running. Dismiss and re-spawn.`,
+          `Team member "${params.name}" session is not active. Dismiss and re-spawn.`,
         );
-      }
-
-      const conn = getRpcConnection(member);
-      if (!conn) {
-        throw new Error(`No RPC connection for "${params.name}".`);
       }
 
       if (member.status === 'running') {
@@ -764,35 +777,7 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      member.status = 'running';
-      member.activityLog = [];
-      member.lastActivity = undefined;
-      member.pendingResult = undefined;
-      updateWidgetNow();
-
-      // Send the RPC prompt command. This awaits the RPC ack (not the agent's
-      // work).  The agent runs in the background; results arrive via wireEvents.
-      let response: Record<string, unknown>;
-      try {
-        response = await conn.send({
-          message: params.message,
-          type: 'prompt',
-        });
-      } catch (err) {
-        member.status = 'error';
-        updateWidgetNow();
-        throw new Error(
-          `Failed to send to "${params.name}": ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-
-      if (!response.success) {
-        member.status = 'error';
-        updateWidgetNow();
-        const errMsg = (response.error as string) || 'unknown error';
-        throw new Error(`Failed to send to "${params.name}": ${errMsg}`);
-      }
-
+      // Return routing info — the tool_result handler delivers the message
       return {
         content: [
           {
@@ -800,7 +785,11 @@ export default (pi: ExtensionAPI) => {
             type: 'text',
           },
         ],
-        details: { agentName: member.agent.name, memberName: member.name },
+        details: {
+          routeFrom: ORCHESTRATOR,
+          routeMessage: params.message,
+          routeTo: params.name,
+        },
       };
     },
     label: 'Team Send',
@@ -842,9 +831,8 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      const conn = getRpcConnection(member);
-      if (!conn) {
-        throw new Error(`No RPC connection for "${params.name}".`);
+      if (!member.session) {
+        throw new Error(`No session for "${params.name}".`);
       }
 
       if (member.status !== 'running') {
@@ -853,15 +841,12 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      const response = await conn.send({
-        message: params.message,
-        type: 'steer',
-      });
-      if (!(response as Record<string, unknown>).success) {
-        const errMsg =
-          ((response as Record<string, unknown>).error as string) ||
-          'unknown error';
-        throw new Error(`Failed to steer "${params.name}": ${errMsg}`);
+      try {
+        await member.session.steer(params.message);
+      } catch (err) {
+        throw new Error(
+          `Failed to steer "${params.name}": ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
 
       return {
@@ -913,21 +898,15 @@ export default (pi: ExtensionAPI) => {
         );
       }
 
-      const conn = getRpcConnection(member);
-      if (!conn) {
-        throw new Error(`No RPC connection for "${params.name}".`);
+      if (!member.session) {
+        throw new Error(`No session for "${params.name}".`);
       }
 
-      const response = await conn.send({
-        message: params.message,
-        type: 'follow_up',
-      });
-      if (!(response as Record<string, unknown>).success) {
-        const errMsg =
-          ((response as Record<string, unknown>).error as string) ||
-          'unknown error';
+      try {
+        await member.session.followUp(params.message);
+      } catch (err) {
         throw new Error(
-          `Failed to queue follow-up for "${params.name}": ${errMsg}`,
+          `Failed to queue follow-up for "${params.name}": ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -990,11 +969,8 @@ export default (pi: ExtensionAPI) => {
               ? '✗ error'
               : '✓ idle';
         const usage = formatUsage(m.usage, m.agent.model);
-        const processAlive =
-          m.rpcProcess && !m.rpcProcess.killed
-            ? 'process: alive'
-            : 'process: dead';
-        return `${m.name} [${status}] (agent: ${m.agent.name}, sends: ${m.sends}, ${processAlive}${usage ? `, ${usage}` : ''})`;
+        const sessionStatus = m.session ? 'session: active' : 'session: none';
+        return `${m.name} [${status}] (agent: ${m.agent.name}, sends: ${m.sends}, ${sessionStatus}${usage ? `, ${usage}` : ''})`;
       });
 
       return {
@@ -1023,11 +999,8 @@ export default (pi: ExtensionAPI) => {
         throw new Error(`No team member "${params.name}".`);
       }
 
-      // Kill the RPC process (also cleans up connection)
-      if (member.rpcProcess?.pid) {
-        removeChild(member.rpcProcess.pid);
-      }
-      killRpcProcess(member);
+      // Dispose the session
+      destroyMemberSession(member);
 
       members.delete(params.name);
       expandedMembers.delete(params.name);

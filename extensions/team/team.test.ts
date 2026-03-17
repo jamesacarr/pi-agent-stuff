@@ -36,56 +36,26 @@ vi.mock('../subagent/agents.ts', () => ({
   })),
 }));
 
-// Mock RPC module to avoid spawning real processes
-vi.mock('./rpc.ts', () => {
-  const connections = new Map<
-    string,
-    {
-      send: ReturnType<typeof vi.fn>;
-      onEvent: ReturnType<typeof vi.fn>;
-      detach: ReturnType<typeof vi.fn>;
-    }
-  >();
-
-  return {
-    cleanSessionDir: vi.fn(),
-    getRpcConnection: vi.fn((member: { name: string }) =>
-      connections.get(member.name),
-    ),
-    killRpcProcess: vi.fn(),
-    makeSessionDir: vi.fn(() => '/tmp/test-team-sessions'),
-    pushActivity: vi.fn(),
-    removeRpcConnection: vi.fn(),
-    setupRpcConnection: vi.fn((member: { name: string }) => {
-      const conn = {
-        detach: vi.fn(),
-        onEvent: vi.fn().mockReturnValue(() => {}),
-        send: vi.fn().mockResolvedValue({ success: true }),
-      };
-      connections.set(member.name, conn);
-      return conn;
-    }),
-    spawnRpcProcess: vi.fn((_cwd: string, member: { rpcProcess?: unknown }) => {
-      const proc = {
-        killed: false,
-        on: vi.fn(),
-        pid: 12345,
-      };
-      member.rpcProcess = proc;
-      return proc;
-    }),
-  };
-});
-
-// Mock team-file module
-vi.mock('./team-file.ts', () => ({
-  addChild: vi.fn(),
-  cleanupOrphans: vi.fn(),
-  removeChild: vi.fn(),
-  removeTeamFile: vi.fn(),
+// Mock session module to avoid creating real agent sessions
+vi.mock('./session.ts', () => ({
+  createMemberSession: vi.fn((_cwd: string, member: { session?: unknown }) => {
+    const session = {
+      abort: vi.fn(),
+      dispose: vi.fn(),
+      followUp: vi.fn(),
+      isStreaming: false,
+      prompt: vi.fn(),
+      steer: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    member.session = session;
+    return session;
+  }),
+  destroyMemberSession: vi.fn(),
+  pushActivity: vi.fn(),
 }));
 
-import { getRpcConnection, spawnRpcProcess } from './rpc.ts';
+import { createMemberSession } from './session.ts';
 
 // ---------------------------------------------------------------------------
 // Capture tool handlers
@@ -133,9 +103,7 @@ const mod = await import('./team.ts');
 mod.default(fakePi as unknown as ExtensionAPI);
 
 // Capture registration state before beforeEach clears mocks
-const registeredFlag = fakePi.registerFlag.mock.calls.some(
-  (c: unknown[]) => c[0] === 'team-member',
-);
+
 const getExecute = (name: string) => {
   const tool = tools.get(name);
   if (!tool) {
@@ -168,10 +136,6 @@ describe('team extension', () => {
       expect(tools.has('team_dismiss')).toBe(true);
     });
 
-    it('registers the --team-member flag', () => {
-      expect(registeredFlag).toBe(true);
-    });
-
     it('registers session lifecycle handlers', () => {
       expect(eventHandlers.has('session_start')).toBe(true);
       expect(eventHandlers.has('session_shutdown')).toBe(true);
@@ -191,7 +155,7 @@ describe('team extension', () => {
       );
       expect(result.content[0].text).toContain('scout');
       expect(result.content[0].text).toContain('spawned');
-      expect(spawnRpcProcess).toHaveBeenCalledOnce();
+      expect(createMemberSession).toHaveBeenCalledOnce();
     });
 
     it('uses custom name when provided', async () => {
@@ -253,7 +217,7 @@ describe('team extension', () => {
       ).rejects.toThrow('No team member "nobody"');
     });
 
-    it('sends message and returns immediately', async () => {
+    it('returns routing info in details', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -272,50 +236,15 @@ describe('team extension', () => {
       expect(result.content[0].text).toContain('Message sent');
       expect(result.content[0].text).toContain('scout');
 
-      // Verify RPC prompt was sent
-      const conn = vi.mocked(getRpcConnection).mock.results[0]?.value;
-      if (conn) {
-        expect(conn.send).toHaveBeenCalledWith({
-          message: 'find auth code',
-          type: 'prompt',
-        });
-      }
-    });
-
-    it('throws when member is already running', async () => {
-      await execSpawn()(
-        'id',
-        { agent: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
-
-      // First send starts running
-      await execSend()(
-        'id',
-        { message: 'first', name: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
-
-      // Second send should fail (member is running)
-      await expect(
-        execSend()(
-          'id',
-          { message: 'second', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow('already processing');
+      // Verify routing info in details (actual sending done by tool_result handler)
+      const details = result.details as Record<string, unknown>;
+      expect(details.routeTo).toBe('scout');
+      expect(details.routeMessage).toBe('find auth code');
     });
   });
 
   describe('team_steer', () => {
     const execSpawn = () => getExecute('team_spawn');
-    const execSend = () => getExecute('team_send');
     const execSteer = () => getExecute('team_steer');
 
     it('throws for unknown member', async () => {
@@ -338,7 +267,7 @@ describe('team extension', () => {
       ).rejects.toThrow('not running');
     });
 
-    it('sends steer command when member is running', async () => {
+    it('throws when member is not running (status is idle after spawn)', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -347,19 +276,11 @@ describe('team extension', () => {
         stubCtx(),
       );
 
-      await execSend()(
-        'id',
-        { message: 'work', name: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
-
-      const result = await execSteer()('id', {
-        message: 'change direction',
-        name: 'scout',
-      });
-      expect(result.content[0].text).toContain('Steering');
+      // Member is idle (team_send returns routing info but doesn't change status
+      // in unit tests — tool_result handler does the actual routing/status change)
+      await expect(
+        execSteer()('id', { message: 'change direction', name: 'scout' }),
+      ).rejects.toThrow('not running');
     });
   });
 
@@ -441,11 +362,11 @@ describe('team extension', () => {
     });
   });
 
-  describe('error recovery', () => {
+  describe('team_send routing', () => {
     const execSpawn = () => getExecute('team_spawn');
     const execSend = () => getExecute('team_send');
 
-    it('resets member status when RPC send rejects', async () => {
+    it('includes routing info for orchestrator sends', async () => {
       await execSpawn()(
         'id',
         { agent: 'scout' },
@@ -454,96 +375,30 @@ describe('team extension', () => {
         stubCtx(),
       );
 
-      // Make the RPC connection reject on send
-      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
-      if (conn) {
-        vi.mocked(conn.send).mockRejectedValueOnce(
-          new Error('connection lost'),
-        );
-      }
-
-      await expect(
-        execSend()(
-          'id',
-          { message: 'fail', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow('connection lost');
-
-      // Member should be in error state, not stuck in 'running'
-      const listResult = await getExecute('team_list')();
-      expect(listResult.content[0].text).toContain('✗ error');
-    });
-
-    it('resets member status when RPC returns success: false', async () => {
-      await execSpawn()(
-        'id',
-        { agent: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
-
-      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
-      if (conn) {
-        vi.mocked(conn.send).mockResolvedValueOnce({
-          error: 'model unavailable',
-          success: false,
-        });
-      }
-
-      await expect(
-        execSend()(
-          'id',
-          { message: 'fail', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow('model unavailable');
-
-      const listResult = await getExecute('team_list')();
-      expect(listResult.content[0].text).toContain('✗ error');
-    });
-
-    it('allows retry after error', async () => {
-      await execSpawn()(
-        'id',
-        { agent: 'scout' },
-        undefined,
-        undefined,
-        stubCtx(),
-      );
-
-      // First send fails
-      const conn = vi.mocked(getRpcConnection)({ name: 'scout' } as never);
-      if (conn) {
-        vi.mocked(conn.send)
-          .mockRejectedValueOnce(new Error('timeout'))
-          .mockResolvedValueOnce({ success: true });
-      }
-
-      await expect(
-        execSend()(
-          'id',
-          { message: 'fail', name: 'scout' },
-          undefined,
-          undefined,
-          stubCtx(),
-        ),
-      ).rejects.toThrow();
-
-      // Retry should work (status is 'error', not 'running')
       const result = await execSend()(
         'id',
-        { message: 'retry', name: 'scout' },
+        { message: 'investigate auth', name: 'scout' },
         undefined,
         undefined,
         stubCtx(),
       );
-      expect(result.content[0].text).toContain('Message sent');
+
+      const details = result.details as Record<string, unknown>;
+      expect(details.routeTo).toBe('scout');
+      expect(details.routeMessage).toBe('investigate auth');
+      expect(details.routeFrom).toBe('__orchestrator__');
+    });
+
+    it('throws for non-existent member', async () => {
+      await expect(
+        execSend()(
+          'id',
+          { message: 'hello', name: 'nobody' },
+          undefined,
+          undefined,
+          stubCtx(),
+        ),
+      ).rejects.toThrow('No team member "nobody"');
     });
   });
 
