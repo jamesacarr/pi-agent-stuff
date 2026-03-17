@@ -7,15 +7,13 @@ $@
 
 ## Workflow
 
-1. **Spawn** a reviewer.
-2. **Send** the reviewer a message describing what to review. Include:
-   - The specific files or changes to review (use `git diff` if needed to identify them).
-   - Any focus areas (e.g., "focus on security and correctness").
-   - Context about what the changes are meant to achieve.
-3. **Report** the reviewer's findings to the user exactly as received.
-4. **Dismiss** the reviewer when done.
+Spawn a reviewer.
+
+1. **Identify changes** — Run `git diff --name-only` if no specific files are mentioned.
+2. **Send** the reviewer a message with the specific files or changes to review, any focus areas, and context about what the changes achieve.
+3. **Report** the reviewer's findings to the user in full.
+4. **Dismiss** the reviewer.
 
 ## Rules
 
-- Run `git diff --name-only` first if no specific files are mentioned — the reviewer cannot review what it cannot find.
-- Never summarise review findings — the user needs severity, file:line, evidence, and suggestion to act on them.
+- Forward review findings in full — the user needs severity, file:line, evidence, and suggestion to act on them.

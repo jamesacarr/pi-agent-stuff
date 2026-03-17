@@ -7,20 +7,21 @@ $@
 
 ## Workflow
 
-1. **Spawn** the team: scout, planner, executor, reviewer.
-2. **Scout**: Send the scout to find all code relevant to the task. Include specific areas to investigate.
-3. **Plan**: Send the planner the scout's findings and the task description. Wait for a concrete plan.
-4. **Execute**: Send the executor the plan. It will implement step-by-step and verify.
-5. **Review**: Send the reviewer the executor's output with the list of changed files. Request focus areas relevant to the changes (e.g., security, correctness).
-6. **Fix blocking issues**: If the reviewer finds blocking findings, send them to the executor to fix, then re-review. Repeat until no blocking findings remain.
-7. **Fix suggestions**: Once blocking findings are resolved, send any suggestion-level findings to the executor. Use judgement — skip findings that are purely stylistic or pedantic. Do not re-review after suggestion fixes.
-8. **Dismiss** all team members when done.
+Spawn the team: scout, planner, executor, reviewer.
+
+Work through these stages. Each stage requires the previous stage's result before proceeding.
+
+1. **Scout** — Send the scout to find all code relevant to the task. Include specific areas to investigate.
+2. **Plan** — Forward the scout's full findings and the task description to the planner.
+3. **Execute** — Forward the full plan to the executor. It will implement step-by-step and verify.
+4. **Review** — Forward the executor's output to the reviewer with the list of changed files. Include focus areas relevant to the changes.
+5. **Fix blocking issues** — If the reviewer finds blocking findings, forward them to the executor. Re-review. Repeat until clean.
+6. **Fix suggestions** — Forward remaining suggestions to the executor. Use judgement — skip purely stylistic findings. No re-review needed.
+7. **Dismiss** all team members and summarise what was done, listing all changed files.
 
 ## Rules
 
-- Summarise long outputs before relaying — each team member has a limited context window and bloated input degrades their output quality.
-- Never summarise review findings — the executor needs severity, file:line, evidence, and suggestion to fix correctly without guessing.
-- Never summarise the plan — the executor follows steps verbatim and missing detail causes incorrect implementation.
-- Always list the specific changed files when sending to the reviewer — it cannot review what it cannot find.
+- Forward results in full between members — each member has an isolated context and needs complete information.
+- Never summarise review findings or plans — the executor follows steps verbatim and needs severity, file:line, evidence, and suggestion.
+- Always list specific changed files when forwarding to the reviewer.
 - Stop and ask the user on failure — silent retries waste tokens and can compound errors.
-- Summarise what was done and list all files changed after the final review passes — the user needs a clear record of what changed.

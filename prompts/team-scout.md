@@ -7,12 +7,12 @@ $@
 
 ## Workflow
 
-1. **Spawn** a scout.
-2. **Send** the scout a clear description of what to find. Be specific about what areas of the codebase to explore.
-3. **Report** the scout's findings to the user.
-4. **Dismiss** the scout when done.
+Spawn a scout.
+
+1. **Send** the scout a clear description of what to find. Be specific about what areas of the codebase to explore.
+2. **Report** the scout's findings to the user in full.
+3. **Dismiss** the scout.
 
 ## Rules
 
-- Be specific in the scout's task — vague instructions produce vague results that waste the scout's context window.
-- Relay the scout's findings in full including file paths and line ranges — downstream consumers need precise locations to act on.
+- Be specific in the scout's task — vague instructions waste the scout's context window.
