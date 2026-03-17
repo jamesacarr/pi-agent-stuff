@@ -1,6 +1,6 @@
 ---
 name: debug-code
-description: Guides systematic root-cause investigation for bugs and failures. Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes.
+description: Guides systematic root-cause investigation. Use any time something isn't working and you're about to change code — whether it looks like a bug, a test failure, or just something that needs a quick fix. Load before investigating or changing anything.
 ---
 
 ## Essential Principles
