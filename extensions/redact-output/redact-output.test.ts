@@ -258,9 +258,30 @@ describe('redact-output', () => {
       expect(result).toBeUndefined();
     });
 
-    it('still pattern-redacts secrets in normal files', () => {
+    const codeFiles = [
+      'src/config.ts',
+      'src/config.js',
+      'src/config.tsx',
+      'src/config.jsx',
+      'src/config.mts',
+      'src/config.mjs',
+      'src/config.cts',
+      'src/config.cjs',
+    ];
+
+    it.each(
+      codeFiles,
+    )('does not redact secrets in code file `%s`', filePath => {
       const result = handler(
-        readResult('config.ts', `const key = "sk-${'a'.repeat(20)}"`),
+        readResult(filePath, `const key = "sk-${'a'.repeat(20)}"`),
+        stubCtx(),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('still pattern-redacts secrets in non-code files', () => {
+      const result = handler(
+        readResult('config.yaml', `key: sk-${'a'.repeat(20)}`),
         stubCtx(),
       );
       expect(getRedactedText(result)).toContain('OPENAI_KEY_REDACTED');

@@ -168,6 +168,9 @@ const redactText = (text: string): { modified: boolean; text: string } => {
 // Guards
 // ---------------------------------------------------------------------------
 
+/** JS/TS source files — skip pattern redaction to avoid false positives in code. */
+const CODE_FILE = /\.[cm]?[jt]sx?$/;
+
 const filterReadOutput = (
   event: ToolResultEvent,
   ctx: ExtensionContext,
@@ -176,6 +179,11 @@ const filterReadOutput = (
 
   // Don't redact .env.example files
   if (/(^|\/)\.env\.example$/i.test(filePath)) {
+    return;
+  }
+
+  // Don't redact JS/TS source files — too many false positives in code
+  if (CODE_FILE.test(filePath)) {
     return;
   }
 
