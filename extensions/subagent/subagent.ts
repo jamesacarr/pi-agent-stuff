@@ -422,6 +422,8 @@ export default function (pi: ExtensionAPI) {
       'Prefer the scout agent for fast codebase recon before planning.',
       'Use chain mode for multi-step workflows where each step builds on the previous (e.g., scout → planner → worker).',
       'Use parallel mode when tasks are independent and can run concurrently.',
+      'Do NOT use subagents to read files — use the read tool directly. Subagents are for tasks that need exploration, analysis, or isolated work.',
+      'Scouts explore and summarise — never ask a scout to return exact file contents. Ask for findings, structure, and key snippets, not verbatim dumps.',
     ],
     renderCall,
     renderResult,

@@ -158,14 +158,12 @@ export const renderCall = (
     for (let i = 0; i < Math.min(chain.length, 3); i++) {
       const step = chain[i];
       const cleanTask = step.task.replace(/\{previous\}/g, '').trim();
-      const preview =
-        cleanTask.length > 40 ? `${cleanTask.slice(0, 40)}...` : cleanTask;
       text +=
         '\n  ' +
         theme.fg('muted', `${i + 1}.`) +
         ' ' +
         theme.fg('accent', step.agent) +
-        theme.fg('dim', ` ${preview}`);
+        theme.fg('dim', ` ${cleanTask}`);
     }
     if (chain.length > 3) {
       text += `\n  ${theme.fg('muted', `... +${chain.length - 3} more`)}`;
@@ -179,8 +177,7 @@ export const renderCall = (
       theme.fg('accent', `parallel (${tasks.length} tasks)`) +
       theme.fg('muted', ` [${scope}]`);
     for (const t of tasks.slice(0, 3)) {
-      const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
-      text += `\n  ${theme.fg('accent', t.agent)}${theme.fg('dim', ` ${preview}`)}`;
+      text += `\n  ${theme.fg('accent', t.agent)}${theme.fg('dim', ` ${t.task}`)}`;
     }
     if (tasks.length > 3) {
       text += `\n  ${theme.fg('muted', `... +${tasks.length - 3} more`)}`;
@@ -189,17 +186,12 @@ export const renderCall = (
   }
 
   const agentName = (args.agent as string) || '...';
-  const taskStr = args.task as string | undefined;
-  const preview = taskStr
-    ? taskStr.length > 60
-      ? `${taskStr.slice(0, 60)}...`
-      : taskStr
-    : '...';
+  const taskStr = (args.task as string) || '...';
   let text =
     theme.fg('toolTitle', theme.bold('subagent ')) +
     theme.fg('accent', agentName) +
     theme.fg('muted', ` [${scope}]`);
-  text += `\n  ${theme.fg('dim', preview)}`;
+  text += `\n  ${theme.fg('dim', taskStr)}`;
   return new Text(text, 0, 0);
 };
 
