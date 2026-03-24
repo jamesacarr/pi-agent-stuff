@@ -29,9 +29,11 @@ export const buildSkillIndex = (
 ): SkillIndexEntry[] =>
   pi
     .getCommands()
-    .filter(cmd => cmd.source === 'skill')
+    .filter(cmd => cmd.sourceInfo.source === 'skill')
     .map(cmd => {
-      const resolved = cmd.path ? normalizeReadPath(cmd.path, cwd) : '';
+      const resolved = cmd.sourceInfo.path
+        ? normalizeReadPath(cmd.sourceInfo.path, cwd)
+        : '';
       return {
         name: stripSkillPrefix(cmd.name),
         skillDir: resolved ? path.dirname(resolved) : '',

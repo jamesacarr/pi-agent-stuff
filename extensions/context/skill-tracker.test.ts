@@ -9,8 +9,13 @@ import { SKILL_LOADED_ENTRY } from './skills.ts';
 const skillCommands = (skills: Array<{ name: string; path: string }>) =>
   skills.map(s => ({
     name: `skill:${s.name}`,
-    path: s.path,
     source: 'skill' as const,
+    sourceInfo: {
+      origin: 'top-level' as const,
+      path: s.path,
+      scope: 'project' as const,
+      source: 'skill' as const,
+    },
   }));
 
 const stubCtx = (

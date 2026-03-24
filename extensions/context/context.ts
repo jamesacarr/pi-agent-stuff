@@ -109,7 +109,7 @@ export default (pi: ExtensionAPI) => {
     handler: async (_args, ctx: ExtensionCommandContext) => {
       const extensions = pi
         .getCommands()
-        .filter(cmd => cmd.source === 'extension')
+        .filter(cmd => cmd.sourceInfo.source === 'extension')
         .map(cmd => cmd.name)
         .sort((a, b) => a.localeCompare(b));
 

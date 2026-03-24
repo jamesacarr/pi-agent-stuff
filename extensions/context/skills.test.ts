@@ -15,7 +15,16 @@ import {
 const stubPi = (
   commands: Array<{ name: string; source: string; path?: string }>,
 ) => ({
-  getCommands: () => commands,
+  getCommands: () =>
+    commands.map(cmd => ({
+      name: cmd.name,
+      sourceInfo: {
+        origin: 'top-level' as const,
+        path: cmd.path ?? '',
+        scope: 'project' as const,
+        source: cmd.source,
+      },
+    })),
 });
 
 const stubCtx = (
