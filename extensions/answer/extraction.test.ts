@@ -21,8 +21,10 @@ const makeRegistry = (
     const key = `${provider}/${modelId}`;
     return key in available ? makeModel(modelId) : undefined;
   },
-  getApiKey: async model =>
-    available[Object.keys(available).find(k => k.endsWith(model.id)) ?? ''],
+  hasConfiguredAuth: model => {
+    const key = Object.keys(available).find(k => k.endsWith(model.id));
+    return key !== undefined && available[key] !== undefined;
+  },
 });
 
 const assistantEntry = (text: string, stopReason = 'stop'): SessionEntry =>
@@ -193,44 +195,44 @@ describe('findLastAssistantText', () => {
 describe('selectExtractionModel', () => {
   const currentModel = makeModel('current-model');
 
-  it('prefers Codex mini when available with an API key', async () => {
+  it('prefers Codex mini when available with an API key', () => {
     const registry = makeRegistry({
       'anthropic/claude-haiku-4-5': 'haiku-key',
       'openai-codex/gpt-5.1-codex-mini': 'codex-key',
     });
-    const result = await selectExtractionModel(currentModel, registry);
+    const result = selectExtractionModel(currentModel, registry);
     expect(result.id).toBe('gpt-5.1-codex-mini');
   });
 
-  it('falls back to Haiku when Codex is unavailable', async () => {
+  it('falls back to Haiku when Codex is unavailable', () => {
     const registry = makeRegistry({
       'anthropic/claude-haiku-4-5': 'haiku-key',
     });
-    const result = await selectExtractionModel(currentModel, registry);
+    const result = selectExtractionModel(currentModel, registry);
     expect(result.id).toBe('claude-haiku-4-5');
   });
 
-  it('falls back to Haiku when Codex has no API key', async () => {
+  it('falls back to Haiku when Codex has no API key', () => {
     const registry = makeRegistry({
       'anthropic/claude-haiku-4-5': 'haiku-key',
       'openai-codex/gpt-5.1-codex-mini': undefined,
     });
-    const result = await selectExtractionModel(currentModel, registry);
+    const result = selectExtractionModel(currentModel, registry);
     expect(result.id).toBe('claude-haiku-4-5');
   });
 
-  it('falls back to current model when no candidates are available', async () => {
+  it('falls back to current model when no candidates are available', () => {
     const registry = makeRegistry({});
-    const result = await selectExtractionModel(currentModel, registry);
+    const result = selectExtractionModel(currentModel, registry);
     expect(result.id).toBe('current-model');
   });
 
-  it('falls back to current model when all candidates lack API keys', async () => {
+  it('falls back to current model when all candidates lack API keys', () => {
     const registry = makeRegistry({
       'anthropic/claude-haiku-4-5': undefined,
       'openai-codex/gpt-5.1-codex-mini': undefined,
     });
-    const result = await selectExtractionModel(currentModel, registry);
+    const result = selectExtractionModel(currentModel, registry);
     expect(result.id).toBe('current-model');
   });
 });

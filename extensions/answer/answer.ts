@@ -50,10 +50,7 @@ export default (pi: ExtensionAPI) => {
       return;
     }
 
-    const extractionModel = await selectExtractionModel(
-      ctx.model,
-      ctx.modelRegistry,
-    );
+    const extractionModel = selectExtractionModel(ctx.model, ctx.modelRegistry);
 
     // Extract questions with a loading spinner
     const extractionResult = await ctx.ui.custom<ExtractionResult | null>(
@@ -66,7 +63,12 @@ export default (pi: ExtensionAPI) => {
         loader.onAbort = () => done(null);
 
         const runExtraction = async () => {
-          const apiKey = await ctx.modelRegistry.getApiKey(extractionModel);
+          const auth =
+            await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
+          if (!auth.ok) {
+            throw new Error(auth.error);
+          }
+
           const message: UserMessage = {
             content: [{ text: lastMessage.text, type: 'text' }],
             role: 'user',
@@ -76,7 +78,11 @@ export default (pi: ExtensionAPI) => {
           const response = await complete(
             extractionModel,
             { messages: [message], systemPrompt: EXTRACTION_SYSTEM_PROMPT },
-            { apiKey, signal: loader.signal },
+            {
+              apiKey: auth.apiKey,
+              headers: auth.headers,
+              signal: loader.signal,
+            },
           );
 
           if (response.stopReason === 'aborted') {

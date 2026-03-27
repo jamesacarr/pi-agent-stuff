@@ -38,10 +38,10 @@
     "@commitlint/cli": "^20.2.0",
     "@commitlint/config-conventional": "^20.2.0",
     "@commitlint/types": "^20.2.0",
-    "@mariozechner/pi-agent-core": "^0.62.0",
-    "@mariozechner/pi-ai": "^0.62.0",
-    "@mariozechner/pi-coding-agent": "^0.62.0",
-    "@mariozechner/pi-tui": "^0.62.0",
+    "@mariozechner/pi-agent-core": "^0.63.0",
+    "@mariozechner/pi-ai": "^0.63.0",
+    "@mariozechner/pi-coding-agent": "^0.63.0",
+    "@mariozechner/pi-tui": "^0.63.0",
     "@sinclair/typebox": "^0.34.48",
     "@types/node": "^25.5.0",
     "@vitest/coverage-v8": "^4.0.15",
@@ -51,8 +51,8 @@
     "vitest": "^4.0.15"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "^0.62.0",
-    "@mariozechner/pi-coding-agent": "^0.62.0",
-    "@mariozechner/pi-tui": "^0.62.0"
+    "@mariozechner/pi-ai": "^0.63.0",
+    "@mariozechner/pi-coding-agent": "^0.63.0",
+    "@mariozechner/pi-tui": "^0.63.0"
   }
 }

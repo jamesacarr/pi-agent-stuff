@@ -40,17 +40,17 @@ Example output:
 
 export interface ModelRegistry {
   find: (provider: string, modelId: string) => Model<Api> | undefined;
-  getApiKey: (model: Model<Api>) => Promise<string | undefined>;
+  hasConfiguredAuth: (model: Model<Api>) => boolean;
 }
 
 /**
  * Select the cheapest capable model for question extraction.
  * Preference order: Codex mini → Haiku → current model.
  */
-export const selectExtractionModel = async (
+export const selectExtractionModel = (
   currentModel: Model<Api>,
   registry: ModelRegistry,
-): Promise<Model<Api>> => {
+): Model<Api> => {
   const candidates = [
     { id: CODEX_MODEL_ID, provider: 'openai-codex' },
     { id: HAIKU_MODEL_ID, provider: 'anthropic' },
@@ -58,11 +58,8 @@ export const selectExtractionModel = async (
 
   for (const candidate of candidates) {
     const model = registry.find(candidate.provider, candidate.id);
-    if (model) {
-      const apiKey = await registry.getApiKey(model);
-      if (apiKey) {
-        return model;
-      }
+    if (model && registry.hasConfiguredAuth(model)) {
+      return model;
     }
   }
 
