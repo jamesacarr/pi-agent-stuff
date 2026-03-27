@@ -5,16 +5,6 @@ import type { ExtractParams, SearchParams } from './schemas.ts';
 export type SearchInput = Static<typeof SearchParams>;
 export type ExtractInput = Static<typeof ExtractParams>;
 
-export interface TavilyMcpRequest {
-  jsonrpc: '2.0';
-  id: number;
-  method: 'tools/call';
-  params: {
-    name: string;
-    arguments: Record<string, unknown>;
-  };
-}
-
 export interface TavilySearchResult {
   title: string;
   url: string;

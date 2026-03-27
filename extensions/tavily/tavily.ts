@@ -24,7 +24,7 @@ export default (pi: ExtensionAPI) => {
 
     async execute(_toolCallId, params: SearchInput, signal) {
       const data = (await callTavily(
-        'tavily_search',
+        'search',
         params as Record<string, unknown>,
         signal,
       )) as TavilySearchResponse;
@@ -51,7 +51,7 @@ export default (pi: ExtensionAPI) => {
 
     async execute(_toolCallId, params: ExtractInput, signal) {
       const data = (await callTavily(
-        'tavily_extract',
+        'extract',
         params as Record<string, unknown>,
         signal,
       )) as TavilyExtractResponse;

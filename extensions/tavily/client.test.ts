@@ -1,132 +1,99 @@
-import { describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
-import { buildMcpRequest, parseSseResponse } from './client.ts';
+import { callTavily } from './client.ts';
 
 // ---------------------------------------------------------------------------
-// buildMcpRequest
+// callTavily
 // ---------------------------------------------------------------------------
 
-describe('buildMcpRequest', () => {
-  it('builds a valid JSON-RPC request for the given tool and arguments', () => {
-    const result = buildMcpRequest('tavily_search', { query: 'test' });
+const fetchMock =
+  vi.fn<(input: string | URL, init?: RequestInit) => Promise<Response>>();
 
-    expect(result).toEqual({
-      id: 1,
-      jsonrpc: '2.0',
-      method: 'tools/call',
-      params: {
-        arguments: { query: 'test' },
-        name: 'tavily_search',
-      },
-    });
-  });
-
-  it('passes through all arguments unchanged', () => {
-    const args = {
-      include_domains: ['example.com'],
-      max_results: 5,
-      query: 'hello',
-    };
-
-    const result = buildMcpRequest('tavily_search', args);
-    expect(result.params.arguments).toEqual(args);
-  });
+beforeAll(() => {
+  vi.stubEnv('TAVILY_API_KEY', 'test-key');
+  vi.stubGlobal('fetch', fetchMock);
 });
 
-// ---------------------------------------------------------------------------
-// parseSseResponse
-// ---------------------------------------------------------------------------
+afterEach(() => {
+  fetchMock.mockReset();
+});
 
-describe('parseSseResponse', () => {
-  it('extracts structuredContent from an SSE data line', () => {
-    const payload = {
-      result: {
-        structuredContent: { query: 'test', results: [] },
-      },
-    };
-    const raw = `event: message\ndata:${JSON.stringify(payload)}\n\n`;
+afterAll(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
-    expect(parseSseResponse(raw)).toEqual({ query: 'test', results: [] });
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    status,
+  });
+}
+
+describe('callTavily', () => {
+  it('throws when TAVILY_API_KEY is not set', async () => {
+    vi.stubEnv('TAVILY_API_KEY', '');
+
+    await expect(callTavily('search', { query: 'test' })).rejects.toThrow(
+      'TAVILY_API_KEY environment variable is not set',
+    );
+
+    vi.stubEnv('TAVILY_API_KEY', 'test-key');
   });
 
-  it('falls back to content[0].text when structuredContent is absent', () => {
-    const inner = JSON.stringify({
-      query: 'fallback',
-      results: [{ title: 'A' }],
+  it('posts to the correct endpoint with api_key and args in the body', async () => {
+    const payload = { query: 'hello', results: [] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    await callTavily('search', { max_results: 3, query: 'hello' });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.tavily.com/search');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      api_key: 'test-key',
+      max_results: 3,
+      query: 'hello',
     });
-    const payload = {
-      result: {
-        content: [{ text: inner, type: 'text' }],
-      },
-    };
-    const raw = `data:${JSON.stringify(payload)}`;
-
-    expect(parseSseResponse(raw)).toEqual({
-      query: 'fallback',
-      results: [{ title: 'A' }],
-    });
   });
 
-  it('parses string content as JSON', () => {
-    const inner = { parsed: true };
-    const payload = {
-      result: {
-        content: [{ text: JSON.stringify(inner), type: 'text' }],
-      },
-    };
-    const raw = `data:${JSON.stringify(payload)}`;
+  it('returns parsed JSON on success', async () => {
+    const payload = { query: 'test', results: [{ title: 'A' }] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
 
-    expect(parseSseResponse(raw)).toEqual(inner);
+    const result = await callTavily('search', { query: 'test' });
+
+    expect(result).toEqual(payload);
   });
 
-  it('returns structuredContent directly when it is already an object', () => {
-    const structured = { already: 'an object' };
-    const payload = { result: { structuredContent: structured } };
-    const raw = `data:${JSON.stringify(payload)}`;
+  it('throws with status and body on HTTP error', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('rate limit exceeded', { status: 429 }),
+    );
 
-    expect(parseSseResponse(raw)).toEqual(structured);
-  });
-
-  it('throws when the response contains no data line', () => {
-    expect(() => parseSseResponse('event: message\n\n')).toThrow(
-      'Unexpected Tavily response',
+    await expect(callTavily('search', { query: 'test' })).rejects.toThrow(
+      'Tavily HTTP 429: rate limit exceeded',
     );
   });
 
-  it('throws when the response contains an error', () => {
-    const payload = { error: { code: -1, message: 'rate limited' } };
-    const raw = `data:${JSON.stringify(payload)}`;
+  it('forwards the abort signal to fetch', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}));
+    const controller = new AbortController();
 
-    expect(() => parseSseResponse(raw)).toThrow('Tavily API error');
-    expect(() => parseSseResponse(raw)).toThrow('rate limited');
-  });
-
-  it('throws when the result has no content', () => {
-    const payload = { result: {} };
-    const raw = `data:${JSON.stringify(payload)}`;
-
-    expect(() => parseSseResponse(raw)).toThrow(
-      'No content in Tavily response',
+    await callTavily(
+      'extract',
+      { urls: ['https://example.com'] },
+      controller.signal,
     );
-  });
 
-  it('prefers structuredContent over content[0].text', () => {
-    const payload = {
-      result: {
-        content: [{ text: JSON.stringify({ from: 'text' }), type: 'text' }],
-        structuredContent: { from: 'structured' },
-      },
-    };
-    const raw = `data:${JSON.stringify(payload)}`;
-
-    expect(parseSseResponse(raw)).toEqual({ from: 'structured' });
-  });
-
-  it('handles multiple lines and picks the first data line', () => {
-    const first = { result: { structuredContent: { first: true } } };
-    const second = { result: { structuredContent: { second: true } } };
-    const raw = `event: open\ndata:${JSON.stringify(first)}\ndata:${JSON.stringify(second)}`;
-
-    expect(parseSseResponse(raw)).toEqual({ first: true });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.signal).toBe(controller.signal);
   });
 });
