@@ -128,7 +128,7 @@ export const formatToolCall = (
       const limit = args.limit as number | undefined;
       if (offset !== undefined || limit !== undefined) {
         const startLine = offset ?? 1;
-        const endLine = limit !== undefined ? startLine + limit - 1 : '';
+        const endLine = limit === undefined ? '' : startLine + limit - 1;
         text += themeFg(
           'warning',
           `:${startLine}${endLine ? `-${endLine}` : ''}`,

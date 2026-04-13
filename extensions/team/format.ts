@@ -142,7 +142,7 @@ export const formatToolCall = (
       const limit = args.limit as number | undefined;
       if (offset !== undefined || limit !== undefined) {
         const start = offset ?? 1;
-        const end = limit !== undefined ? start + limit - 1 : '';
+        const end = limit === undefined ? '' : start + limit - 1;
         text += fg('warning', `:${start}${end ? `-${end}` : ''}`);
       }
       return `${fg('muted', 'read ')}${text}`;
