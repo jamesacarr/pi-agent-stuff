@@ -44,11 +44,11 @@
     "@mariozechner/pi-tui": "^0.66.1",
     "@sinclair/typebox": "^0.34.49",
     "@types/node": "^25.6.0",
-    "@vitest/coverage-v8": "^4.0.15",
+    "@vitest/coverage-v8": "^4.1.4",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.4"
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "^0.66.1",
