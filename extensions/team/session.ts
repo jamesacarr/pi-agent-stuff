@@ -108,7 +108,7 @@ export const createMemberSession = async (
 
   // Resolve model
   const authStorage = AuthStorage.create();
-  const modelRegistry = new ModelRegistry(authStorage);
+  const modelRegistry = ModelRegistry.create(authStorage);
 
   let model: ReturnType<typeof modelRegistry.find> | undefined;
   if (agent.model) {
