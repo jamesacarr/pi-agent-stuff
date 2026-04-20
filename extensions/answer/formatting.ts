@@ -13,11 +13,14 @@ export const formatAnswers = (
     const question = questions[i];
     const answer = answers[i]?.trim() || '(no answer)';
 
-    parts.push(`Q: ${question.question}`);
+    parts.push(`**Q:** ${question.question}`);
     if (question.context) {
       parts.push(`> ${question.context}`);
+      // Blank line terminates the blockquote so the answer isn't swallowed
+      // into it via CommonMark lazy continuation.
+      parts.push('');
     }
-    parts.push(`A: ${answer}`);
+    parts.push(`**A:** ${answer}`);
     parts.push('');
   }
 
