@@ -60,6 +60,17 @@ Return to RED for the next behavior. Continue until done criteria are met.
 
 **Interleaving is not TDD.** Writing tests and implementation simultaneously skips the RED phase. You never see the test fail, so you never confirm it tests the right thing. Each phase has a purpose — RED validates the test, GREEN validates the implementation, REFACTOR improves the design.
 
+## Diagnostics
+
+Test pain is design pain. If RED is blocked, the symptom points at the design issue — fix the design, not the test. Skipping RED because it's hard hides the signal.
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| Can't see how to write the test | API shape isn't decided yet | Write the assertion and call you wish worked — working backwards forces the interface |
+| Test is too complicated to write | The unit does too much | Split or simplify the interface before continuing |
+| Must mock everything to isolate it | Dependencies are hard-wired | Take dependencies as parameters and pass real ones (see ../test/SKILL.md) |
+| Setup dwarfs the assertion | Too many preconditions per behaviour | Extract helpers; if still heavy, the unit is too large |
+
 ## Rationalizations
 
 | Excuse | Reality |
