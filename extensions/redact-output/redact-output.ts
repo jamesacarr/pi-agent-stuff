@@ -129,22 +129,29 @@ type FilterResult = {
   isError?: boolean;
 };
 
-const findTextContent = (
-  content: ToolResultEvent['content'],
-): TextContent | undefined =>
-  content.find((c): c is TextContent => c.type === 'text');
-
-const notify = (ctx: ExtensionContext, message: string) => {
+const notify = (
+  ctx: ExtensionContext,
+  message: string,
+  level: 'info' | 'warning' | 'error' = 'info',
+) => {
   if (ctx.hasUI) {
-    ctx.ui.notify(message, 'info');
+    ctx.ui.notify(message, level);
   }
 };
 
-/** Skip pattern scanning above this threshold — rely on sensitive file detection instead. */
-const MAX_SCAN_BYTES = 100 * 1024;
+/** Skip pattern scanning above this threshold — regex cost becomes significant. */
+const MAX_SCAN_BYTES = 10 * 1024 * 1024;
 
-const redactText = (text: string): { modified: boolean; text: string } => {
+const redactText = (
+  text: string,
+  ctx: ExtensionContext,
+): { modified: boolean; text: string } => {
   if (text.length > MAX_SCAN_BYTES) {
+    notify(
+      ctx,
+      `⚠️  Output exceeds ${MAX_SCAN_BYTES} bytes — skipping pattern redaction`,
+      'warning',
+    );
     return { modified: false, text };
   }
 
@@ -209,21 +216,71 @@ const filterReadOutput = (
   return redactToolOutput(event, ctx);
 };
 
+// ---------------------------------------------------------------------------
+// Bash guard — best-effort detection of commands that read sensitive files
+// ---------------------------------------------------------------------------
+
+/** Tokenise a bash command for path inspection. Best-effort, not a shell parser. */
+const tokeniseCommand = (command: string): string[] =>
+  command.split(/[\s"'`;|&<>()=]+/).filter(Boolean);
+
+const commandReferencesSensitiveFile = (command: string): boolean => {
+  const tokens = tokeniseCommand(command);
+
+  return tokens.some(token => {
+    if (/(^|\/)\.env\.example$/i.test(token)) {
+      return false;
+    }
+    return SENSITIVE_FILES.some(pattern => pattern.test(token));
+  });
+};
+
+const filterBashOutput = (
+  event: ToolResultEvent,
+  ctx: ExtensionContext,
+): FilterResult | undefined => {
+  const command =
+    typeof event.input.command === 'string' ? event.input.command : '';
+
+  if (commandReferencesSensitiveFile(command)) {
+    notify(ctx, `🔒 Redacted output of command referencing sensitive file`);
+    return {
+      content: [
+        {
+          text: '[Output redacted for security: command references a sensitive file]',
+          type: 'text',
+        },
+      ],
+    };
+  }
+
+  return redactToolOutput(event, ctx);
+};
+
 const redactToolOutput = (
   event: ToolResultEvent,
   ctx: ExtensionContext,
 ): FilterResult | undefined => {
-  const textContent = findTextContent(event.content);
+  const textBlocks = event.content.filter(
+    (c): c is TextContent => c.type === 'text',
+  );
 
-  if (!textContent) {
+  if (textBlocks.length === 0) {
     return;
   }
 
-  const { text, modified } = redactText(textContent.text);
+  let anyModified = false;
+  const redactedBlocks: TextContent[] = textBlocks.map(block => {
+    const { text, modified } = redactText(block.text, ctx);
+    if (modified) {
+      anyModified = true;
+    }
+    return { text, type: 'text' };
+  });
 
-  if (modified) {
+  if (anyModified) {
     notify(ctx, '🔒 Sensitive data redacted from output');
-    return { content: [{ text, type: 'text' }] };
+    return { content: redactedBlocks };
   }
 };
 
@@ -239,6 +296,10 @@ export default (pi: ExtensionAPI) => {
 
     if (event.toolName === 'read') {
       return filterReadOutput(event, ctx);
+    }
+
+    if (event.toolName === 'bash') {
+      return filterBashOutput(event, ctx);
     }
 
     return redactToolOutput(event, ctx);

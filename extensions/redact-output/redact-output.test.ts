@@ -30,7 +30,16 @@ const toolResult = (
 const readResult = (path: string, text: string): ToolResultEvent =>
   toolResult('read', text, { path });
 
-const bashResult = (text: string): ToolResultEvent => toolResult('bash', text);
+const bashResult = (text: string, command = ''): ToolResultEvent =>
+  toolResult('bash', text, { command });
+
+const multiTextBashResult = (texts: string[]): ToolResultEvent =>
+  ({
+    content: texts.map(text => ({ text, type: 'text' as const })),
+    input: { command: '' },
+    isError: false,
+    toolName: 'bash',
+  }) as unknown as ToolResultEvent;
 
 // Capture the tool_result handler ----------------------------------------
 
@@ -306,8 +315,14 @@ describe('redact-output', () => {
   });
 
   describe('large output threshold', () => {
-    it('skips pattern scanning for outputs over 100KB', () => {
-      const largeOutput = `sk-${'a'.repeat(20)} ${'x'.repeat(100 * 1024)}`;
+    it('still pattern-scans outputs just over 100KB', () => {
+      const output = `sk-${'a'.repeat(20)} ${'x'.repeat(150 * 1024)}`;
+      const result = handler(bashResult(output), stubCtx());
+      expect(getRedactedText(result)).toContain('OPENAI_KEY_REDACTED');
+    });
+
+    it('skips pattern scanning for outputs over 10MB', () => {
+      const largeOutput = `sk-${'a'.repeat(20)} ${'x'.repeat(11 * 1024 * 1024)}`;
       const result = handler(bashResult(largeOutput), stubCtx());
       expect(result).toBeUndefined();
     });
@@ -315,6 +330,12 @@ describe('redact-output', () => {
     it('still fully redacts sensitive files regardless of size', () => {
       const largeContent = 'x'.repeat(200 * 1024);
       const result = handler(readResult('.env', largeContent), stubCtx());
+      expect(getRedactedText(result)).toContain('redacted for security');
+    });
+
+    it('still fully redacts bash output for sensitive-file commands regardless of size', () => {
+      const largeContent = 'x'.repeat(11 * 1024 * 1024);
+      const result = handler(bashResult(largeContent, 'cat .env'), stubCtx());
       expect(getRedactedText(result)).toContain('redacted for security');
     });
   });
@@ -337,6 +358,93 @@ describe('redact-output', () => {
         stubCtx(false),
       );
       expect(getRedactedText(result)).toContain('OPENAI_KEY_REDACTED');
+    });
+  });
+
+  describe('bash commands reading sensitive files', () => {
+    const secretOutput = `API_KEY=sk-ant-api03-${'a'.repeat(80)}`;
+
+    const sensitiveCommands = [
+      ['cat .env', 'cat .env'],
+      ['cat ./.env', 'cat ./.env'],
+      ['cat ~/project/.env.local', 'cat ~/project/.env.local'],
+      ['head -n 5 .env.production', 'head -n 5 .env.production'],
+      ['tail .env', 'tail .env'],
+      ['grep KEY .env', 'grep KEY .env'],
+      ['sed quoted path', `sed -n '1,10p' ".env"`],
+      ['awk secrets.json', `awk '{print}' secrets.json`],
+      ['cat secret.yaml', 'cat secret.yaml'],
+      ['cat credentials', 'cat credentials'],
+      ['cat path/to/.credentials', 'cat path/to/.credentials'],
+      ['cat .dev.vars', 'cat .dev.vars'],
+      ['base64 .env', 'base64 .env'],
+      ['xxd .env', 'xxd .env'],
+      ['redirect input', 'cat < .env'],
+      ['command expansion', 'X=.env; cat $X'],
+    ];
+
+    it.each(
+      sensitiveCommands,
+    )('fully redacts output of `%s`', (_name, command) => {
+      const result = handler(bashResult(secretOutput, command), stubCtx());
+      const text = getRedactedText(result);
+      expect(text).toContain('redacted');
+      expect(text).not.toContain('sk-ant-api03');
+    });
+
+    it('does not fully redact `cat .env.example`', () => {
+      const result = handler(
+        bashResult('API_KEY=placeholder', 'cat .env.example'),
+        stubCtx(),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    const benignCommands = [
+      'ls -la',
+      'echo hello',
+      'git status',
+      'cat README.md',
+      'cat src/env.ts',
+    ];
+
+    it.each(benignCommands)('does not fully redact output of `%s`', command => {
+      const result = handler(bashResult('no secrets here', command), stubCtx());
+      expect(result).toBeUndefined();
+    });
+
+    it('still pattern-redacts when command is benign but output leaks a key', () => {
+      const result = handler(
+        bashResult(`leaked: sk-${'a'.repeat(20)}`, 'echo $API_KEY'),
+        stubCtx(),
+      );
+      expect(getRedactedText(result)).toContain('OPENAI_KEY_REDACTED');
+    });
+  });
+
+  describe('multiple text content blocks', () => {
+    it('redacts secrets that appear only in later text blocks', () => {
+      const result = handler(
+        multiTextBashResult(['harmless output', `key: sk-${'a'.repeat(20)}`]),
+        stubCtx(),
+      );
+      const redactedTexts = result?.content?.map(c => c.text) ?? [];
+      expect(redactedTexts).toHaveLength(2);
+      expect(redactedTexts[0]).toBe('harmless output');
+      expect(redactedTexts[1]).toContain('OPENAI_KEY_REDACTED');
+    });
+
+    it('redacts secrets across every text block when multiple contain them', () => {
+      const result = handler(
+        multiTextBashResult([
+          `first: sk-${'a'.repeat(20)}`,
+          `second: ghp_${'b'.repeat(36)}`,
+        ]),
+        stubCtx(),
+      );
+      const redactedTexts = result?.content?.map(c => c.text) ?? [];
+      expect(redactedTexts[0]).toContain('OPENAI_KEY_REDACTED');
+      expect(redactedTexts[1]).toContain('GITHUB_TOKEN_REDACTED');
     });
   });
 });
