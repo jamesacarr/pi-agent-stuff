@@ -286,6 +286,23 @@ describe('redact-output', () => {
       );
       expect(getRedactedText(result)).toContain('OPENAI_KEY_REDACTED');
     });
+
+    const markdownFiles = [
+      'README.md',
+      'docs/guide.md',
+      'notes.MD',
+      'path/to/CHANGELOG.md',
+    ];
+
+    it.each(
+      markdownFiles,
+    )('does not redact secrets in Markdown file `%s`', filePath => {
+      const result = handler(
+        readResult(filePath, `key: sk-${'a'.repeat(20)}`),
+        stubCtx(),
+      );
+      expect(result).toBeUndefined();
+    });
   });
 
   describe('large output threshold', () => {

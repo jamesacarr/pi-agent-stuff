@@ -168,8 +168,11 @@ const redactText = (text: string): { modified: boolean; text: string } => {
 // Guards
 // ---------------------------------------------------------------------------
 
-/** JS/TS source files — skip pattern redaction to avoid false positives in code. */
-const CODE_FILE = /\.[cm]?[jt]sx?$/;
+/** Files where pattern redaction is skipped — false positives outweigh risk. */
+const NON_SENSITIVE_FILES = [
+  /\.[cm]?[jt]sx?$/, // JS/TS source — code literals trip generic patterns
+  /\.md$/i, // Markdown — documentation, not secrets
+];
 
 const filterReadOutput = (
   event: ToolResultEvent,
@@ -182,8 +185,8 @@ const filterReadOutput = (
     return;
   }
 
-  // Don't redact JS/TS source files — too many false positives in code
-  if (CODE_FILE.test(filePath)) {
+  // Skip pattern redaction for files where false positives outweigh risk
+  if (NON_SENSITIVE_FILES.some(pattern => pattern.test(filePath))) {
     return;
   }
 
