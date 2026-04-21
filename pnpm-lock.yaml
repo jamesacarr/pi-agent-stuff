@@ -20,9 +20,6 @@ importers:
       '@commitlint/types':
         specifier: ^20.5.0
         version: 20.5.0
-      '@mariozechner/pi-agent-core':
-        specifier: ^0.66.1
-        version: 0.66.1(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-ai':
         specifier: ^0.66.1
         version: 0.66.1(ws@8.20.0)(zod@4.3.6)
