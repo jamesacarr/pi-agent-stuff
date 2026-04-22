@@ -16,9 +16,9 @@ Upgrade all outdated dependencies with atomic commits, ordered by risk (patch â†
 ### Step 1: Pre-flight
 
 1. **Detect environment:** package manager, monorepo, test runner, build tool
-2. **Detect commit convention:** scan `git log --oneline -50` (or any `commitlint.config.*`) for prior dependency commits. Use the project's existing format. If none is obvious, default to `build(deps): ...` (conventional-commits standard, matches Dependabot/Renovate).
+2. **Detect commit convention** (see SKILL.md principle 5)
 3. Verify clean git state
-4. **Ask the user** whether to work on the current branch or create a new one. Suggested branch name if they opt in: `deps/routine-upgrades-<YYYY-MM-DD>`. Do not create a branch unless asked.
+4. **Ask before branching** (see SKILL.md principle 6). Suggested name: `deps/routine-upgrades-<YYYY-MM-DD>`.
 5. Run verification suite to confirm green baseline
 6. List outdated packages:
    ```bash

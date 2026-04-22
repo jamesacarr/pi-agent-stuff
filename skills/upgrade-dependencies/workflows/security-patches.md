@@ -13,24 +13,29 @@ Remediate all high/critical security vulnerabilities with atomic commits per CVE
 
 ## Steps
 
-### Step 1: Audit
+### Step 1: Pre-flight
 
 1. Detect package manager and monorepo structure
-2. Run security audit:
+2. **Detect commit convention** (see SKILL.md principle 5)
+3. **Ask before branching** (see SKILL.md principle 6). Suggested name: `deps/security-patches-<YYYY-MM-DD>`.
+
+### Step 2: Audit
+
+1. Run security audit:
    ```bash
    pnpm audit
    yarn audit
    npm audit
    ```
-3. Parse findings into a table:
+2. Parse findings into a table:
 
    | Severity | Package | Current | Fixed In | CVE | Direct/Transitive | Workspaces |
    |----------|---------|---------|----------|-----|-------------------|------------|
    | *(fill per finding)* | | | | | | |
 
-4. Group findings by CVE — one CVE = one remediation unit
+3. Group findings by CVE — one CVE = one remediation unit
 
-### Step 2: Research
+### Step 3: Research
 
 For each CVE (**use the `web-search` skill — not training data**):
 
@@ -48,7 +53,7 @@ For each CVE (**use the `web-search` skill — not training data**):
    | Transitive — parent has update | Upgrade the parent package |
    | Transitive — no parent update | Use `overrides` (pnpm/npm) or `resolutions` (yarn) |
 
-### Step 3: Remediate
+### Step 4: Remediate
 
 For each CVE (ordered by severity, highest first):
 
@@ -56,13 +61,16 @@ For each CVE (ordered by severity, highest first):
 2. In monorepos: apply across ALL affected workspaces
 3. Run verification suite for affected workspaces
 4. Run `<pm> audit` to confirm the specific CVE is resolved
-5. Commit: `fix(security): resolve <CVE-ID> — upgrade <package> to <version>`
+5. Commit using the convention detected in Step 1. Default format: `fix(security): resolve <CVE-ID> — upgrade <package> to <version>`.
+
+   `fix(security)` is a project-agnostic Conventional Commits format. Some projects use `fix(deps)` for security fixes; follow the detected convention.
+
 
 **On unfixable CVE:** Document the blocker, inform the user, and move to the next CVE. Do not force upgrades that break the build.
 
 **One CVE per commit.** Multiple packages may share a commit if they all address the same CVE.
 
-### Step 4: Final Validation
+### Step 5: Final Validation
 
 1. Full `<pm> audit` — should report zero high/critical findings
 2. Full verification suite across all workspaces

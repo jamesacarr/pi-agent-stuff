@@ -23,9 +23,9 @@ Safely upgrade a core package to a new major version, then upgrade all affected 
 
 2. **Verify clean state:** `git status` must show no uncommitted changes
 
-3. **Detect commit convention:** scan `git log --oneline -50` (or any `commitlint.config.*`) for prior dependency commits. Use the project's existing format. If none is obvious, default to `build(deps): ...` (conventional-commits standard, matches Dependabot/Renovate).
+3. **Detect commit convention** (see SKILL.md principle 5)
 
-4. **Ask the user** whether to work on the current branch or create a new one. Suggested branch name if they opt in: `deps/upgrade-<package>-v<version>`. Do not create a branch unless asked.
+4. **Ask before branching** (see SKILL.md principle 6). Suggested name: `deps/upgrade-<package>-v<version>`.
 
 5. **Run verification suite** to confirm green baseline before changing anything
 

@@ -21,6 +21,10 @@ description: "Guides safe, atomic dependency upgrades in JavaScript projects. Us
 
 **4. Detect, don't assume.** Auto-detect package manager, monorepo structure, test runner, and build tool from the project before starting.
 
+**5. Match the project's commit convention.** Scan `git log --oneline -50` and any `commitlint.config.*` for prior dependency commits. If none is obvious, default to `build(deps): ...` — `build` is a Conventional Commits type and `(deps)` is the scope Dependabot and Renovate use. Workflow commit steps show default formats; substitute the detected convention when it differs. If history is mixed, pick the most recent form; ask if still unclear.
+
+**6. Prompt before creating a branch.** The user may already be on a suitable branch. Offer a suggested name from the workflow and wait for confirmation.
+
 ## Intake
 
 Detect upgrade type from user context. If ambiguous, ask:
