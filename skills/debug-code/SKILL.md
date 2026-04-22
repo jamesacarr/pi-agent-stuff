@@ -33,8 +33,6 @@ Use for any technical issue: test failures, bugs, unexpected behaviour, performa
 
 ### Step 1: Root Cause Investigation
 
-Before attempting any fix:
-
 1. **Read error messages carefully**
    - Don't skip past errors or warnings — they often contain the exact solution
    - Read stack traces completely
@@ -78,7 +76,7 @@ Compare the broken case to a working one before fixing:
 
 1. **Enumerate hypotheses** — List every plausible cause with likelihood (high/medium/low), reasoning, and what evidence would confirm or reject each. Three or more hypotheses prevent tunnel vision. One candidate is usually the first thing you thought of, not the answer.
 
-2. **Test one hypothesis at a time** — Start with the highest-likelihood or cheapest-to-test. Make the smallest possible change, one variable at a time.
+2. **Test one hypothesis at a time** — Start with the highest-likelihood or cheapest-to-test. Make the smallest possible change, one variable at a time. Parallel changes leave you unable to tell which one produced the new behaviour.
 
 3. **Verify before continuing**
    - Confirmed: move to Step 4.
@@ -91,9 +89,9 @@ Compare the broken case to a working one before fixing:
 
 Fix the root cause, not the symptom:
 
-1. **Create a failing test case** — Simplest reproduction, automated if possible. Use the `test-driven-development` skill (see `../test-driven-development/SKILL.md`). A failing test first proves the fix addresses the real cause.
+1. **Create a failing reproduction** — Simplest reproduction, automated where practical. For binary-correctness bugs, a failing unit test (see `test-driven-development` skill at `../test-driven-development/SKILL.md`). For performance bugs, a benchmark or regression threshold. For intermittent/flaky bugs, a stress loop that reliably triggers the failure. A failing reproduction first proves the fix addresses the real cause and guards against regression.
 
-2. **Implement a single fix** — One change addressing root cause. No "while I'm here" improvements.
+2. **Implement a single fix** — One change addressing root cause. No "while I'm here" improvements: mixed changes obscure whether the real bug was fixed and make the diff harder to review.
 
 3. **Verify the fix** — Test passes? No other tests broken? Issue resolved in the original reproduction?
 
@@ -137,6 +135,8 @@ Specific user phrasing usually means the investigation has gone off-track. Treat
 | "Will it show us...?" | You should have added evidence gathering before proposing a fix |
 | "Stop guessing" | You're proposing fixes without understanding |
 | "We're stuck?" (frustrated) | Your current approach isn't working |
+
+**Self-triggered signal:** after every Step, briefly state what was confirmed, what was ruled out, and what's next. If the investigation has gone 10+ tool calls without a confirmed hypothesis, pause and summarise to the user before continuing — you're likely tunnel-visioning or missing evidence.
 
 ## Anti-Patterns
 
