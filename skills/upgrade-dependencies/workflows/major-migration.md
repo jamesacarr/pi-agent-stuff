@@ -23,9 +23,11 @@ Safely upgrade a core package to a new major version, then upgrade all affected 
 
 2. **Verify clean state:** `git status` must show no uncommitted changes
 
-3. **Create branch:** `git checkout -b deps/upgrade-<package>-v<version>`
+3. **Detect commit convention:** scan `git log --oneline -50` (or any `commitlint.config.*`) for prior dependency commits. Use the project's existing format. If none is obvious, default to `build(deps): ...` (conventional-commits standard, matches Dependabot/Renovate).
 
-4. **Run verification suite** to confirm green baseline before changing anything
+4. **Create branch:** `git checkout -b deps/upgrade-<package>-v<version>`
+
+5. **Run verification suite** to confirm green baseline before changing anything
 
 ### Step 2: Research
 
@@ -67,7 +69,7 @@ Safely upgrade a core package to a new major version, then upgrade all affected 
 2. Upgrade associated types if applicable (e.g., `@types/react@19`)
 3. Run verification suite (types → tests → build)
 4. Fix any breaking changes identified in research
-5. Commit: `deps(<package>): upgrade to v<version>`
+5. Commit using the convention detected in Step 1. Default format: `build(deps): upgrade <package> to v<version>`
 
 **Core package + its types may share one commit ONLY if they must be upgraded simultaneously to avoid a broken intermediate state.**
 
@@ -80,7 +82,7 @@ For each ecosystem library needing an update (order: lowest-risk first):
 3. Apply any required code changes (API changes, renamed imports, etc.)
 4. Run verification suite
 5. Fix any issues
-6. Commit: `deps(<library>): upgrade to v<version> for <core>@<version> compat`
+6. Commit using the convention detected in Step 1. Default format: `build(deps): upgrade <library> to v<version> for <core>@<version> compat`
 
 **One library per commit. No exceptions.**
 

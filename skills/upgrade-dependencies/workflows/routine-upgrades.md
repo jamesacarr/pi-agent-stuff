@@ -16,10 +16,11 @@ Upgrade all outdated dependencies with atomic commits, ordered by risk (patch �
 ### Step 1: Pre-flight
 
 1. **Detect environment:** package manager, monorepo, test runner, build tool
-2. Verify clean git state
-3. Create branch: `git checkout -b deps/routine-upgrades-<YYYY-MM-DD>`
-4. Run verification suite to confirm green baseline
-5. List outdated packages:
+2. **Detect commit convention:** scan `git log --oneline -50` (or any `commitlint.config.*`) for prior dependency commits. Use the project's existing format. If none is obvious, default to `build(deps): ...` (conventional-commits standard, matches Dependabot/Renovate).
+3. Verify clean git state
+4. Create branch: `git checkout -b deps/routine-upgrades-<YYYY-MM-DD>`
+5. Run verification suite to confirm green baseline
+6. List outdated packages:
    ```bash
    pnpm outdated --recursive
    yarn outdated
@@ -52,7 +53,7 @@ Then:
 2. Apply any required code changes
 3. Run verification suite (types → tests → build)
 4. **Stop on failure.** Fix the issue before moving to the next package.
-5. Commit: `deps(<package>): upgrade <old> → <new>`
+5. Commit using the convention detected in Step 1. Default format: `build(deps): upgrade <package> <old> → <new>`
 
 **On unfixable failure:** `git reset --hard HEAD~1` to undo the upgrade. Document why it's blocked (e.g., incompatible peer dep, removed API with no migration path). Skip to next package.
 
