@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Bisection script to find which test creates unwanted files/state
-# Usage: ./find-polluter.sh <file_or_dir_to_check> <test_pattern>
+# Bisection script to find which test creates unwanted files/state.
+#
+# Usage:   ./find-polluter.sh <file_or_dir_to_check> <test_pattern>
 # Example: ./find-polluter.sh '.git' 'src/**/*.test.ts'
+#
+# Pattern uses bash globstar, so '**' matches any number of directories.
+# Quote the pattern so the shell passes it through unexpanded; this script
+# expands it using globstar so the behaviour is consistent across macOS
+# (BSD find) and Linux (GNU find), which disagree on how '-path' treats '**'.
 
-set -e
+set -eu
+shopt -s globstar nullglob
 
 if [ $# -ne 2 ]; then
   echo "Usage: $0 <file_to_check> <test_pattern>"
@@ -18,15 +25,24 @@ echo "🔍 Searching for test that creates: $POLLUTION_CHECK"
 echo "Test pattern: $TEST_PATTERN"
 echo ""
 
-# Get list of test files
-TEST_FILES=$(find . -path "$TEST_PATTERN" | sort)
-TOTAL=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
+# Expand the pattern via bash globstar, then sort.
+# Word-splitting on the unquoted variable is intentional: it triggers glob
+# expansion of the pattern contained in the variable.
+# shellcheck disable=SC2206
+TEST_FILES=( $TEST_PATTERN )
+IFS=$'\n' read -r -d '' -a TEST_FILES < <(printf '%s\n' "${TEST_FILES[@]}" | sort && printf '\0')
+TOTAL=${#TEST_FILES[@]}
+
+if [ "$TOTAL" -eq 0 ]; then
+  echo "❌ No files matched pattern: $TEST_PATTERN"
+  exit 1
+fi
 
 echo "Found $TOTAL test files"
 echo ""
 
 COUNT=0
-for TEST_FILE in $TEST_FILES; do
+for TEST_FILE in "${TEST_FILES[@]}"; do
   COUNT=$((COUNT + 1))
 
   # Skip if pollution already exists
