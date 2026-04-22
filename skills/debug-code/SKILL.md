@@ -47,7 +47,7 @@ Before attempting any fix:
 
 3. **Check recent changes**
    - `git diff`, `git log`, recent commits
-   - `git bisect` if the regression window is wide — binary-search the commit that broke it
+   - `git bisect` if the regression window is wide — binary-search the commit that broke it. See `references/bisection.md`.
    - New dependencies, config changes, environmental differences
 
 4. **Instrument, reproduce, analyse**
@@ -169,6 +169,7 @@ If you catch yourself thinking any of these, stop and return to Root Cause Inves
 
 - `references/root-cause-tracing.md` — Trace bugs backward through the call stack to find the original trigger
 - `references/5-whys.md` — Ask why repeatedly to find systemic/procedural root cause
+- `references/bisection.md` — Binary-search commits, tests, or inputs to isolate a bug
 - `references/defense-in-depth.md` — Add validation at multiple layers after finding root cause
 - `references/condition-based-waiting.md` — Replace arbitrary timeouts with condition polling
 - `scripts/find-polluter.sh` — Bisect test files to find which test creates unwanted state
