@@ -7,26 +7,43 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
-          node-version-file: .tool-versions
           cache: pnpm
-
+          node-version-file: .tool-versions
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:ci
 
-      - name: Lint
-        run: pnpm lint:ci
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Pin the timezone so any date/time logic in tests is deterministic.
+      # GitHub-hosted ubuntu runners already default to UTC, but explicit
+      # beats implicit — and Node reads TZ at startup.
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          cache: pnpm
+          node-version-file: .tool-versions
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Test
-        run: pnpm vitest run
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          cache: pnpm
+          node-version-file: .tool-versions
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
