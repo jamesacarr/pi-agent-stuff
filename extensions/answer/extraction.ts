@@ -1,5 +1,5 @@
-import type { Api, AssistantMessage, Model } from '@mariozechner/pi-ai';
-import type { SessionEntry } from '@mariozechner/pi-coding-agent';
+import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai';
+import type { SessionEntry } from '@earendil-works/pi-coding-agent';
 
 import type { ExtractionResult } from './types.ts';
 

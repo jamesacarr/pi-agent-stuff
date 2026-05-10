@@ -1,4 +1,4 @@
-import type { Component, EditorTheme, TUI } from '@mariozechner/pi-tui';
+import type { Component, EditorTheme, TUI } from '@earendil-works/pi-tui';
 import {
   Editor,
   Key,
@@ -6,7 +6,7 @@ import {
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 
 import { formatAnswers } from './formatting.ts';
 import type { ExtractedQuestion } from './types.ts';

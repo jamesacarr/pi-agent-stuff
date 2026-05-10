@@ -4,8 +4,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   ToolCallEvent,
-} from '@mariozechner/pi-coding-agent';
-import { isToolCallEventType } from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
+import { isToolCallEventType } from '@earendil-works/pi-coding-agent';
 
 // ---------------------------------------------------------------------------
 // Dangerous commands (bash only — confirmation prompt)

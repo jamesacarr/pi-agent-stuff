@@ -2,7 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   ToolResultEvent,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 
 // ---------------------------------------------------------------------------
 // Sensitive patterns — redact tokens, keys, and credentials from tool output

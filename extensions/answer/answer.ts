@@ -11,13 +11,13 @@
  * 4. Submits the compiled answers back to the conversation
  */
 
-import type { UserMessage } from '@mariozechner/pi-ai';
-import { complete } from '@mariozechner/pi-ai';
+import type { UserMessage } from '@earendil-works/pi-ai';
+import { complete } from '@earendil-works/pi-ai';
 import type {
   ExtensionAPI,
   ExtensionContext,
-} from '@mariozechner/pi-coding-agent';
-import { BorderedLoader } from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
+import { BorderedLoader } from '@earendil-works/pi-coding-agent';
 
 import {
   EXTRACTION_SYSTEM_PROMPT,

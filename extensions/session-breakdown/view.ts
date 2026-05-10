@@ -1,10 +1,10 @@
-import type { Component, TUI } from '@mariozechner/pi-tui';
+import type { Component, TUI } from '@earendil-works/pi-tui';
 import {
   Key,
   matchesKey,
   truncateToWidth,
   visibleWidth,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 
 import { resolveGraphMetric } from './aggregate.ts';
 import { bold, dim, padRightAnsi } from './format.ts';

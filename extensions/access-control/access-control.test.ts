@@ -11,7 +11,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   ToolCallEvent,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 
 // Minimal stubs ----------------------------------------------------------
 

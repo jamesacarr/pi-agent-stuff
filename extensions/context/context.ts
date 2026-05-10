@@ -13,7 +13,7 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   ToolResultEvent,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 
 import { loadProjectContextFiles } from './discovery.ts';
 import { sumSessionUsage } from './session.ts';

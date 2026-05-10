@@ -5,7 +5,7 @@
  * Requires: TAVILY_API_KEY environment variable.
  */
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
 import { callTavily } from './client.ts';
 import { formatExtractResults, formatSearchResults } from './format.ts';

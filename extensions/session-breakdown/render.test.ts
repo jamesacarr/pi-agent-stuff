@@ -1,4 +1,4 @@
-import { visibleWidth } from '@mariozechner/pi-tui';
+import { visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, test } from 'vitest';
 
 import { addSessionToRange, buildRange, choosePalette } from './aggregate.ts';

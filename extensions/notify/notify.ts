@@ -5,7 +5,7 @@
  * Uses afplay — no external dependencies.
  */
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
 import { playNotificationSound } from './notification.ts';
 

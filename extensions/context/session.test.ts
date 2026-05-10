@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from '@mariozechner/pi-coding-agent';
+import type { ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it } from 'vitest';
 
 import { sumSessionUsage } from './session.ts';
